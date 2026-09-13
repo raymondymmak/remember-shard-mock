@@ -115,6 +115,8 @@ export function downloadLog() {
   const link = document.createElement("a");
   link.href = href;
   link.download = "remember-marks.json";
+  document.body.appendChild(link);
   link.click();
+  link.remove();
   window.setTimeout(() => URL.revokeObjectURL(href), 1000);
 }
