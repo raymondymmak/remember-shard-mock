@@ -1,5 +1,6 @@
 import { JOBS as RAW_JOBS, SHARDS as RAW_SHARDS } from "./shards.js";
-import { prepareJobs, prepareShards, rankShards } from "./ranker.js";
+import { MIX_KEYS, WEIGHTS, prepareJobs, prepareShards, rankShards } from "./ranker.js";
+import { fit, inspectLog } from "./train.js";
 import * as store from "./store.js";
 
 const JOBS = prepareJobs(RAW_JOBS);
@@ -17,6 +18,7 @@ const state = {
   ranking: [],
   animating: false,
   kept: false,
+  trainNote: "",
 };
 
 function currentJob() {
@@ -58,6 +60,10 @@ function fmt(n) {
   return n.toFixed(2);
 }
 
+function activeWeights() {
+  return store.loadWeights() || WEIGHTS;
+}
+
 function rerank({ excludeIds = [], shown = store.shown() } = {}) {
   return rankShards({
     shards: SHARDS,
@@ -66,6 +72,7 @@ function rerank({ excludeIds = [], shown = store.shown() } = {}) {
     shown,
     log: store.log(),
     excludeIds,
+    weights: activeWeights(),
   });
 }
 
@@ -145,6 +152,14 @@ function renderTeach() {
 
   const top3 = pool.slice(0, 3);
   const job = currentJob();
+  const learned = store.loadWeights();
+  const mixLabels = {
+    job: "closeness to the job",
+    freshness: "not shown recently",
+    recency: "how recent the day was",
+    vibe: "grit / softness / people",
+    text: "words in the note",
+  };
 
   teachBodyEl.innerHTML = `
     <p class="teach-lede">
@@ -170,6 +185,25 @@ function renderTeach() {
         })
         .join("")}
     </ul>
+    ${
+      learned
+        ? `<p class="teach-kicker">the mix</p>
+           <p class="teach-lede teach-mix-lede">Default on the left. Learned on the right.</p>
+           <ul class="teach-list teach-mix">
+             ${MIX_KEYS.map((key) => {
+               const now = Number(learned[key] ?? WEIGHTS[key]);
+               const moved = Math.abs(now - WEIGHTS[key]) >= 0.02;
+               return `<li class="${moved ? "is-moved" : ""}"><span>${mixLabels[key]}</span><span>${fmt(WEIGHTS[key])} → ${fmt(now)}</span></li>`;
+             }).join("")}
+           </ul>`
+        : ""
+    }
+    ${state.trainNote ? `<p class="teach-note">${state.trainNote}</p>` : ""}
+    <div class="teach-actions">
+      <button type="button" class="teach-act" data-train="learn">learn from my marks</button>
+      <button type="button" class="teach-act" data-train="reset">reset to default mix</button>
+      <button type="button" class="teach-act" data-train="export">download the marks</button>
+    </div>
   `;
 }
 
@@ -283,8 +317,40 @@ shardEl.addEventListener("click", (event) => {
   else if (act === "nah") onAdvance("nah");
 });
 
+function onLearn() {
+  const check = inspectLog(store.log());
+  if (!check.ok) {
+    state.trainNote = check.reason;
+    renderTeach();
+    return;
+  }
+  store.saveWeights(fit(store.log()));
+  state.trainNote = `Learned from ${check.keeps} keep and ${check.nahs} nah.`;
+  state.usedIds = new Set();
+  const next = pickCandidate();
+  if (next) swapTo(next.shard);
+}
+
+function onResetMix() {
+  store.clearWeights();
+  state.trainNote = "Back to the hand-written mix.";
+  state.usedIds = new Set();
+  const next = pickCandidate();
+  if (next) swapTo(next.shard);
+}
+
 teachEl.addEventListener("toggle", () => {
   if (teachEl.open) renderTeach();
+});
+
+teachEl.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-train]");
+  if (!button) return;
+  event.preventDefault();
+  const act = button.dataset.train;
+  if (act === "learn") onLearn();
+  else if (act === "reset") onResetMix();
+  else if (act === "export") store.downloadLog();
 });
 
 const first = pickCandidate();

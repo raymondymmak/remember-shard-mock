@@ -4,12 +4,26 @@
 export const EMBED_DIM = 48;
 
 // How the final score is mixed. Job closeness does most of the work.
+// vibe / text start at 0 — they already live inside `job`. Training may
+// give them their own voice later.
 export const WEIGHTS = {
   job: 0.58,
   freshness: 0.14,
   recency: 0.08,
+  vibe: 0,
+  text: 0,
   feedback: 0.2,
 };
+
+export const MIX_KEYS = ["job", "freshness", "recency", "vibe", "text"];
+
+export function mixWeights(learned) {
+  return {
+    ...WEIGHTS,
+    ...(learned && typeof learned === "object" ? learned : {}),
+    feedback: WEIGHTS.feedback,
+  };
+}
 
 // Inside "job closeness": the hand-authored vibe vs the words in the note.
 const VIBE_SHARE = 0.72;
@@ -143,20 +157,23 @@ export function feedbackScore(log, shardId, jobId) {
   return Math.tanh(feedbackMarks(log, shardId, jobId));
 }
 
-export function explainShard(shard, { job, now, shown, log }) {
+export function explainShard(shard, { job, now, shown, log, weights = WEIGHTS }) {
   const vibe = cosine(shard.vibe, job.vibe);
   const text = cosine(shard.textVec, job.textVec);
   const jobSim = VIBE_SHARE * vibe + TEXT_SHARE * text;
   const freshness = freshnessScore(shown[shard.id], now);
   const recency = recencyScore(shard.date, now);
   const feedback = feedbackScore(log, shard.id, job.id);
+  const w = mixWeights(weights);
 
   const parts = { job: jobSim, freshness, recency, feedback };
   const total =
-    WEIGHTS.job * parts.job +
-    WEIGHTS.freshness * parts.freshness +
-    WEIGHTS.recency * parts.recency +
-    WEIGHTS.feedback * parts.feedback;
+    w.job * parts.job +
+    w.freshness * parts.freshness +
+    w.recency * parts.recency +
+    w.vibe * vibe +
+    w.text * text +
+    w.feedback * parts.feedback;
 
   return { total, parts, vibe, text };
 }
@@ -168,9 +185,10 @@ export function rankShards({
   shown = {},
   log = [],
   excludeIds = [],
+  weights = WEIGHTS,
 }) {
   const skip = new Set(excludeIds);
-  const ctx = { job, now, shown, log };
+  const ctx = { job, now, shown, log, weights };
 
   return shards
     .filter((shard) => !skip.has(shard.id))

@@ -10,6 +10,10 @@ This page exists so the shard can be *felt*: layout, tone, and the meaning-link 
 
 retrieve → rank → feedback. Each job is a query (a small grit / softness / people vibe, plus words). Every shard in the pool is scored with cosine similarity, a not-shown-recently term, a light recency term, and your keep / nah marks. The letter is whoever wins — **another** takes the next unused candidate, not a shuffle. Marks land in localStorage so the next ranking, even after a reload, can move. Open **why this ranked** to see the arithmetic; it is a classroom overlay, not a product surface.
 
+## This is supervised learning
+
+keep and nah are labels: wanted / not wanted, stored with the score parts from that moment. **learn from my marks** fits a small logistic model (gradient descent, starting from the hand-written mix) that predicts P(keep) from those parts — job, freshness, recency, vibe, words. The ranking formula then uses the learned weights. **another** is ignored here; it is a skip, not a clean class. **reset to default mix** restores the prior. You can download the marks as JSON. No backend, no neural net.
+
 ## Jobs in this mock
 
 1. **Need a push** — motivation when down
@@ -37,4 +41,4 @@ npm run preview
 
 ## Iterate
 
-Shard copy and hand-authored vibe vectors live in `src/shards.js`. The scoring math lives in `src/ranker.js`. Layout and type live in `src/style.css`. Keep the page a letter.
+Shard copy and hand-authored vibe vectors live in `src/shards.js`. The scoring math lives in `src/ranker.js`. The tiny trainer lives in `src/train.js`. Layout and type live in `src/style.css`. Keep the page a letter.

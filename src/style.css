@@ -352,6 +352,51 @@ body {
   color: var(--ink);
 }
 
+.teach-mix-lede {
+  margin-bottom: 0.45rem;
+  font-size: 0.84rem;
+}
+
+.teach-mix li.is-moved {
+  color: var(--ink);
+}
+
+.teach-note {
+  margin: 0.85rem 0 0;
+  font-family: var(--serif);
+  font-size: 0.88rem;
+  font-style: italic;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+.teach-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 1.15rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.teach-act {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0.2rem 0;
+  cursor: pointer;
+  font-family: var(--serif);
+  font-size: 0.88rem;
+  font-style: italic;
+  color: var(--ink-soft);
+}
+
+.teach-act:hover,
+.teach-act:focus-visible {
+  color: var(--terracotta);
+  outline: none;
+}
+
 @media (min-width: 540px) {
   .jobs-row {
     grid-template-columns: 1fr 1fr 1.35fr;
