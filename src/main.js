@@ -148,7 +148,7 @@ function renderTeach() {
 
   teachBodyEl.innerHTML = `
     <p class="teach-lede">
-      The job asked for <em>${job.label.toLowerCase()}</em>.
+      The job asked for <em>${job.label}</em>.
       Here is how this memory scored among ${pool.length}.
     </p>
     <p class="teach-kicker">how it scored</p>
