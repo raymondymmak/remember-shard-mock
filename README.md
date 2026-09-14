@@ -14,6 +14,10 @@ retrieve → rank → feedback. Each job is a query (a small grit / softness / p
 
 keep and nah are labels: wanted / not wanted, stored with the score parts from that moment. **learn from my marks** fits a small logistic model (gradient descent, starting from the hand-written mix) that predicts P(keep) from those parts — job, freshness, recency, vibe, words. The ranking formula then uses the learned weights. **another** is ignored here; it is a skip, not a clean class. **reset to default mix** restores the prior. You can download the marks as JSON. No backend, no neural net.
 
+## Train vs test
+
+We hide the newest ~30% of keep/nah marks and fit only on the rest. Then we score both the default mix and the learned mix on the hidden marks (accuracy and log-loss). That holdout is the honest quiz: a mix can look clever on marks it already saw and still fail on ones it didn’t. If there aren’t enough hidden marks, we say so — we don’t invent a score. If the learned mix loses on the holdout, that’s overfitting, and we say that too.
+
 ## Jobs in this mock
 
 1. **Need a push** — motivation when down

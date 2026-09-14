@@ -1,6 +1,6 @@
 import { JOBS as RAW_JOBS, SHARDS as RAW_SHARDS } from "./shards.js";
 import { MIX_KEYS, WEIGHTS, prepareJobs, prepareShards, rankShards } from "./ranker.js";
-import { fit, inspectLog } from "./train.js";
+import { explainEval, inspectLog, learnAndEvaluate } from "./train.js";
 import * as store from "./store.js";
 
 const JOBS = prepareJobs(RAW_JOBS);
@@ -198,6 +198,7 @@ function renderTeach() {
            </ul>`
         : ""
     }
+    ${evalMarkup(store.loadEval())}
     ${state.trainNote ? `<p class="teach-note">${state.trainNote}</p>` : ""}
     <div class="teach-actions">
       <button type="button" class="teach-act" data-train="learn">learn from my marks</button>
@@ -317,6 +318,15 @@ shardEl.addEventListener("click", (event) => {
   else if (act === "nah") onAdvance("nah");
 });
 
+function evalMarkup(report) {
+  const lines = explainEval(report);
+  if (!lines.length) return "";
+  return `
+    <p class="teach-kicker">train and test</p>
+    ${lines.map((line) => `<p class="teach-note">${line}</p>`).join("")}
+  `;
+}
+
 function onLearn() {
   const check = inspectLog(store.log());
   if (!check.ok) {
@@ -324,7 +334,8 @@ function onLearn() {
     renderTeach();
     return;
   }
-  store.saveWeights(fit(store.log()));
+  const { weights, report } = learnAndEvaluate(store.log());
+  store.saveWeights(weights, report);
   state.trainNote = `Learned from ${check.keeps} keep and ${check.nahs} nah.`;
   state.usedIds = new Set();
   const next = pickCandidate();

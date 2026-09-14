@@ -70,7 +70,7 @@ export function shown() {
   return Object.fromEntries(shownAt);
 }
 
-export function loadWeights() {
+function readWeightsRecord() {
   if (!canUseStorage()) return globalThis.__rememberWeights ?? null;
   try {
     const raw = localStorage.getItem(WEIGHTS_KEY);
@@ -83,17 +83,32 @@ export function loadWeights() {
   }
 }
 
-export function saveWeights(weights) {
+export function loadWeights() {
+  const data = readWeightsRecord();
+  if (!data) return null;
+  if (data.mix && typeof data.mix === "object") return data.mix;
+  if ("job" in data) return data;
+  return null;
+}
+
+export function loadEval() {
+  const data = readWeightsRecord();
+  return data && data.eval && typeof data.eval === "object" ? data.eval : null;
+}
+
+export function saveWeights(weights, evalReport = null) {
+  const mix = weights?.mix && typeof weights.mix === "object" ? weights.mix : weights;
+  const payload = { v: 2, mix, eval: evalReport };
   if (!canUseStorage()) {
-    globalThis.__rememberWeights = weights;
-    return weights;
+    globalThis.__rememberWeights = payload;
+    return payload;
   }
   try {
-    localStorage.setItem(WEIGHTS_KEY, JSON.stringify(weights));
+    localStorage.setItem(WEIGHTS_KEY, JSON.stringify(payload));
   } catch {
     // ignore quota / private mode
   }
-  return weights;
+  return payload;
 }
 
 export function clearWeights() {
