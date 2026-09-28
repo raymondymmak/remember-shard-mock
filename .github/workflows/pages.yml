@@ -1,0 +1,86 @@
+# Publishes the letter to GitHub Pages on every push to main.
+# Uses the workflow's own GITHUB_TOKEN — no extra secrets.
+# Live page: https://raymondymmak.github.io/remember-shard-mock/
+
+name: Pages
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  # So the first run can select "GitHub Actions" as the Pages source.
+  administration: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+        env:
+          GITHUB_PAGES: "true"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Select GitHub Actions as the Pages source
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const build_type = "workflow";
+            try {
+              await github.rest.repos.getPages({ owner, repo });
+              await github.rest.repos.updateInformationAboutPagesSite({
+                owner,
+                repo,
+                build_type,
+              });
+            } catch (error) {
+              if (error.status !== 404) {
+                core.warning(`Could not read Pages settings: ${error.message}`);
+                return;
+              }
+              try {
+                await github.rest.repos.createPagesSite({ owner, repo, build_type });
+              } catch (createError) {
+                core.warning(`Could not turn Pages on: ${createError.message}`);
+              }
+            }
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
