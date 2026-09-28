@@ -1,4 +1,4 @@
-import { withoutLatestKeep } from "./marks.js";
+import { withoutLatestKeep, withoutLatestNah } from "./marks.js";
 
 const KEY = "remember.feedback.v0";
 const WEIGHTS_KEY = "remember.weights.v0";
@@ -60,13 +60,22 @@ export function recordFeedback({ shardId, job, action, scores, timestamp = Date.
   return save(log);
 }
 
-// Lift the keep that the button is showing. Other marks stay, including an
-// earlier keep that a later "another" or "nah" already superseded.
-export function undoKeep(shardId, job) {
+function undoTrailing(shardId, job, strip) {
   const log = load();
-  const next = withoutLatestKeep(log, shardId, job);
+  const next = strip(log, shardId, job);
   if (next === log) return log;
   return save(next);
+}
+
+// Lift the keep the like icon is showing. Other marks stay, including an
+// earlier keep that a later "another" or "nah" already superseded.
+export function undoKeep(shardId, job) {
+  return undoTrailing(shardId, job, withoutLatestKeep);
+}
+
+// Lift the nah the dislike icon is showing. Same rule as undoKeep.
+export function undoNah(shardId, job) {
+  return undoTrailing(shardId, job, withoutLatestNah);
 }
 
 export function markShown(shardId, timestamp = Date.now()) {
