@@ -225,26 +225,21 @@ body {
   color: var(--mute);
 }
 
-.shard-tools {
+.marks {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 0.15rem;
+  gap: 0.6rem;
+  margin: 1.25rem 0.4rem 0.1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--line);
 }
 
-.shard-index {
-  margin: 0;
-  font-size: 0.68rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--mute);
-}
-
-.another {
+.mark {
   appearance: none;
   border: 0;
   background: none;
-  padding: 0.35rem 0;
+  padding: 0.35rem 0.2rem;
   cursor: pointer;
   font-family: var(--serif);
   font-size: 0.95rem;
@@ -252,14 +247,152 @@ body {
   color: var(--ink-soft);
 }
 
-.another::after {
-  content: " →";
+.mark:hover,
+.mark:focus-visible {
+  color: var(--terracotta);
+  outline: none;
+}
+
+.mark.is-kept {
+  color: var(--terracotta);
+}
+
+.teach {
+  margin: 0.15rem 0.2rem 0;
+  color: var(--mute);
+}
+
+.teach summary {
+  cursor: pointer;
+  width: fit-content;
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  list-style: none;
+  color: var(--mute);
+}
+
+.teach summary::-webkit-details-marker {
+  display: none;
+}
+
+.teach summary::before {
+  content: "› ";
   font-style: normal;
   letter-spacing: 0;
 }
 
-.another:hover,
-.another:focus-visible {
+.teach[open] summary::before {
+  content: "ˇ ";
+}
+
+.teach summary:hover,
+.teach summary:focus-visible {
+  color: var(--ink-soft);
+  outline: none;
+}
+
+.teach-body {
+  margin-top: 0.75rem;
+}
+
+.teach-lede {
+  margin: 0 0 0.85rem;
+  font-family: var(--serif);
+  font-size: 0.92rem;
+  font-style: italic;
+  font-weight: 360;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.teach-kicker {
+  margin: 0.9rem 0 0.35rem;
+  font-size: 0.58rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--terracotta);
+}
+
+.teach-list,
+.teach-also {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.teach-list li,
+.teach-also li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.18rem 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+.teach-list li.is-sub {
+  padding-left: 0.7rem;
+  color: var(--mute);
+}
+
+.teach-list li.is-total {
+  margin-top: 0.25rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.teach-also li span:first-child {
+  min-width: 0;
+}
+
+.teach-also li.is-here {
+  color: var(--ink);
+}
+
+.teach-mix-lede {
+  margin-bottom: 0.45rem;
+  font-size: 0.84rem;
+}
+
+.teach-mix li.is-moved {
+  color: var(--ink);
+}
+
+.teach-note {
+  margin: 0.55rem 0 0;
+  font-family: var(--serif);
+  font-size: 0.88rem;
+  font-style: italic;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+.teach-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 1.15rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.teach-act {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 0.2rem 0;
+  cursor: pointer;
+  font-family: var(--serif);
+  font-size: 0.88rem;
+  font-style: italic;
+  color: var(--ink-soft);
+}
+
+.teach-act:hover,
+.teach-act:focus-visible {
   color: var(--terracotta);
   outline: none;
 }
@@ -281,7 +414,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .job,
   .shard,
-  .another {
+  .mark {
     transition: none;
   }
 }
