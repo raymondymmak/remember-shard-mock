@@ -3,6 +3,7 @@
 // and embedding vectors sit in a store beside them.
 
 import { mergePlan } from "./ingest.js";
+import { samplesAsideAfterIntake } from "./own.js";
 
 const META_KEY = "remember.library.v0";
 const DB_NAME = "remember";
@@ -193,6 +194,12 @@ export function list() {
   return records.map(materialize);
 }
 
+// Samples stay in the demo library either way. This is only who gets ranked.
+export function rankingPool(samples) {
+  const own = list();
+  return includeSamples ? [...samples, ...own] : own;
+}
+
 export function updateShard(id, patch) {
   const row = records.find((item) => item.id === id);
   if (!row) return null;
@@ -202,6 +209,7 @@ export function updateShard(id, patch) {
 }
 
 export async function rememberShards(drafts, blobs) {
+  const ownBefore = records.length;
   const actions = mergePlan(records, drafts);
   const added = [];
   const updated = [];
@@ -242,6 +250,10 @@ export async function rememberShards(drafts, blobs) {
     }
     records.push(row);
     added.push(row);
+  }
+
+  if (samplesAsideAfterIntake({ ownBefore, added: added.length })) {
+    includeSamples = false;
   }
 
   writeMeta();

@@ -30,6 +30,7 @@ import {
   vibeFromNote,
 } from "./ingest.js";
 import { composeWhy } from "./why.js";
+import { poolFace } from "./own.js";
 
 let JOBS = prepareJobs(RAW_JOBS);
 
@@ -38,6 +39,8 @@ const shardEl = document.querySelector("#shard");
 const teachEl = document.querySelector("#teach");
 const teachBodyEl = document.querySelector("#teach-body");
 const hintEl = document.querySelector("#bring-hint");
+const inviteEl = document.querySelector("#pool-invite");
+const cueEl = document.querySelector("#pool-cue");
 const samplesBtn = document.querySelector("#samples-toggle");
 const pickFilesEl = document.querySelector("#pick-files");
 const pickFolderEl = document.querySelector("#pick-folder");
@@ -118,9 +121,7 @@ function paintStatus() {
 }
 
 function rawShards() {
-  const imported = library.list();
-  const samples = library.includeSamplesOn() ? RAW_SHARDS : [];
-  return [...samples, ...imported];
+  return library.rankingPool(RAW_SHARDS);
 }
 
 let vectorGen = 0;
@@ -547,6 +548,19 @@ function syncSamplesToggle() {
   const on = library.includeSamplesOn();
   samplesBtn.setAttribute("aria-pressed", on ? "true" : "false");
   samplesBtn.textContent = on ? "samples in" : "samples aside";
+}
+
+function syncPoolFace() {
+  const face = poolFace({
+    ownCount: library.list().length,
+    includeSamples: library.includeSamplesOn(),
+  });
+  if (inviteEl) {
+    inviteEl.textContent = face.invite;
+    inviteEl.hidden = !face.invite;
+  }
+  if (cueEl) cueEl.textContent = face.cue;
+  syncSamplesToggle();
 }
 
 function activeWeights() {
@@ -1029,6 +1043,7 @@ async function intake(entries) {
     setHint("Couldn’t keep those just now.");
     return false;
   } finally {
+    syncPoolFace();
     state.busy = false;
   }
 }
@@ -1125,6 +1140,7 @@ async function onForget() {
   await embedCache.forget(shard.id);
   photoPrints.delete(`${shard.id}:${shard.fingerprint || shard.photo || ""}`);
   rebuildPool();
+  syncPoolFace();
   state.usedIds = new Set();
   setHint("Let go. The pool moved on.");
   const next = pickCandidate();
@@ -1138,7 +1154,7 @@ async function onSamplesToggle() {
   const shardId = state.shardId;
   library.setIncludeSamples(!library.includeSamplesOn());
   rebuildPool();
-  syncSamplesToggle();
+  syncPoolFace();
   state.usedIds = new Set();
   if (shardId && pool.some((shard) => shard.id === shardId)) {
     renderJobs();
@@ -1306,7 +1322,7 @@ window.addEventListener("drop", (event) => {
 
 function paintPreview() {
   rebuildPool();
-  syncSamplesToggle();
+  syncPoolFace();
   const preview = pickCandidate();
   if (!preview) {
     renderJobs();
@@ -1329,7 +1345,7 @@ async function boot() {
     // Samples still rank if the library can’t be opened.
   }
   rebuildPool();
-  syncSamplesToggle();
+  syncPoolFace();
   await attachImageFeel(pool);
   booted = true;
   const yours = library.list().length;
