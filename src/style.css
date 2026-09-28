@@ -370,13 +370,17 @@ body {
 }
 
 .teach > summary::before {
-  content: "› ";
+  content: "›";
+  display: inline-block;
+  margin-right: 0.4em;
   letter-spacing: 0;
   line-height: 1;
+  transform-origin: center;
 }
 
 .teach[open] > summary::before {
-  content: "ˇ ";
+  content: "›";
+  transform: rotate(90deg);
 }
 
 .teach[open] > summary {

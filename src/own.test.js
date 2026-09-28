@@ -164,4 +164,17 @@ describe("my shards", { concurrency: 1 }, () => {
     );
     assert.match(html, /<summary class="lens">why this showed up<\/summary>/);
   });
+
+  it("keeps the score breakdown inline and has no numbers disclosure", () => {
+    const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+    const main = readFileSync(new URL("./main.js", import.meta.url), "utf8");
+    const css = readFileSync(new URL("./style.css", import.meta.url), "utf8");
+    for (const source of [html, main, css]) {
+      assert.equal(/the numbers/i.test(source), false);
+      assert.equal(source.includes("teach-math"), false);
+    }
+    assert.match(main, /class="teach-scores"/);
+    assert.match(main, /how it scored/);
+    assert.equal(main.includes("<details"), false);
+  });
 });
