@@ -1,4 +1,4 @@
-import { withoutLatestKeep, withoutLatestNah } from "./marks.js";
+import { placeMark, undoActiveKeep, undoActiveNah } from "./marks.js";
 
 const KEY = "remember.feedback.v0";
 const WEIGHTS_KEY = "remember.weights.v0";
@@ -55,9 +55,11 @@ function save(log) {
 }
 
 export function recordFeedback({ shardId, job, action, scores, timestamp = Date.now() }) {
+  const event = { shardId, job, action, timestamp, scores };
   const log = load();
-  log.push({ shardId, job, action, timestamp, scores });
-  return save(log);
+  // Like and dislike replace each other. A skip, if one is still recorded, stays an append.
+  const next = action === "keep" || action === "nah" ? placeMark(log, event) : [...log, event];
+  return save(next);
 }
 
 function undoTrailing(shardId, job, strip) {
@@ -67,15 +69,15 @@ function undoTrailing(shardId, job, strip) {
   return save(next);
 }
 
-// Lift the keep the like icon is showing. Other marks stay, including an
-// earlier keep that a later nah, or an older skip, already superseded.
+// Second tap on like. Clears that keep, and any dislike it replaced,
+// so the letter is unmarked. Other shards and jobs stay put.
 export function undoKeep(shardId, job) {
-  return undoTrailing(shardId, job, withoutLatestKeep);
+  return undoTrailing(shardId, job, undoActiveKeep);
 }
 
-// Lift the nah the dislike icon is showing. Same rule as undoKeep.
+// Second tap on dislike. Same rule as undoKeep.
 export function undoNah(shardId, job) {
-  return undoTrailing(shardId, job, withoutLatestNah);
+  return undoTrailing(shardId, job, undoActiveNah);
 }
 
 export function markShown(shardId, timestamp = Date.now()) {

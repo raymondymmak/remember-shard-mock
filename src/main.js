@@ -29,7 +29,7 @@ import {
   paperWash,
   vibeFromNote,
 } from "./ingest.js";
-import { composeWhy } from "./why.js";
+import { composeWhy, plainReasons } from "./why.js";
 import { poolFace } from "./own.js";
 import { isKept, isNixed } from "./marks.js";
 import { rankPlace, stepRank } from "./browse.js";
@@ -54,7 +54,6 @@ const captureNoteEl = document.querySelector("#capture-note");
 const meaningEl = document.querySelector("#meaning");
 const folioEl = document.querySelector("#folio");
 const folioPlaceEl = document.querySelector("#folio-place");
-const folioRankEl = document.querySelector("#folio-rank");
 const folioPrevEl = document.querySelector("#folio-prev");
 const folioNextEl = document.querySelector("#folio-next");
 const folioAllEl = document.querySelector("#folio-all");
@@ -546,19 +545,11 @@ function fmt(n) {
   return n.toFixed(2);
 }
 
-let hintLead = (hintEl?.textContent || "").replace(/\s+/g, " ").trim();
-
-function paintHint(placement = currentPlacement()) {
-  if (!hintEl) return;
-  const rank = placement?.letter ? `This one ${placement.letter}.` : "";
-  hintEl.textContent = [hintLead, rank].filter(Boolean).join(" ");
-}
-
 function setHint(text) {
-  hintLead = String(text ?? "")
-    .replace(/\s*This one ranked \d+(?:st|nd|rd|th) of \d+\.?/gi, "")
+  if (!hintEl) return;
+  hintEl.textContent = String(text ?? "")
+    .replace(/\s+/g, " ")
     .trim();
-  paintHint();
 }
 
 function syncSamplesToggle() {
@@ -724,13 +715,6 @@ function refreshLetterWhy() {
   if (teachEl?.open) renderTeach();
 }
 
-function currentPlacement() {
-  const shard = currentShard();
-  if (!shard) return null;
-  const placement = rankPlace(folioShards(), shard.id);
-  return placement.letter ? placement : null;
-}
-
 function syncMarks() {
   const log = store.log();
   state.kept = Boolean(state.shardId && isKept(log, state.shardId, state.job));
@@ -834,25 +818,32 @@ function renderFolioList(shards) {
   if (drawerOpen()) revealFolioHere();
 }
 
+function syncAllLabel() {
+  if (!folioAllEl) return;
+  const label = folioPlaceEl?.textContent?.trim() || "1 of 1";
+  const open = drawerOpen();
+  folioAllEl.setAttribute(
+    "aria-label",
+    `${label}, ${open ? "hide the other shards" : "show every shard"}`,
+  );
+}
+
 function renderFolio() {
   if (!folioEl) return;
   const shard = currentShard();
   if (!shard) {
     folioEl.hidden = true;
-    paintHint(null);
     return;
   }
   const shards = folioShards();
   const place = rankPlace(shards, shard.id);
   if (!place.total || place.index < 0) {
     folioEl.hidden = true;
-    paintHint(null);
     return;
   }
   folioEl.hidden = false;
   if (folioPlaceEl) folioPlaceEl.textContent = place.label;
-  if (folioRankEl) folioRankEl.textContent = `This one ${place.letter}.`;
-  paintHint(place);
+  syncAllLabel();
   if (folioPrevEl) folioPrevEl.disabled = place.index <= 0;
   if (folioNextEl) folioNextEl.disabled = place.index >= place.total - 1;
   if (drawerOpen()) renderFolioList(shards);
@@ -862,6 +853,7 @@ function setDrawer(open) {
   if (!folioAllEl || !folioDrawerEl) return;
   folioAllEl.setAttribute("aria-expanded", open ? "true" : "false");
   folioDrawerEl.hidden = !open;
+  syncAllLabel();
   if (open) renderFolioList(folioShards());
 }
 
@@ -922,6 +914,16 @@ function renderTeach() {
     .filter(Boolean);
   const job = currentJob();
   const learned = store.loadWeights();
+  const reasons = plainReasons({
+    job,
+    jobScore: row.parts.job,
+    text: row.text,
+    image: row.image,
+    imageMode: row.imageMode,
+    freshness: row.parts.freshness,
+    recency: row.parts.recency,
+    feedback: row.parts.feedback,
+  });
   const mixLabels = {
     job: "closeness to the job",
     freshness: "not shown recently",
@@ -931,53 +933,55 @@ function renderTeach() {
   };
 
   teachBodyEl.innerHTML = `
-    ${poolLine()}
-    <p class="teach-lede">
-      The job asked for <em>${escapeHtml(job.label)}</em>.
-      Here is how this memory ${placement.teach}.
-    </p>
-    <p class="teach-kicker">how it scored</p>
-    <ul class="teach-list">
-      <li><span>closeness to the job</span><span>${fmt(row.parts.job)}</span></li>
-      <li class="is-sub"><span>vibe cosine — grit / softness / people</span><span>${fmt(row.vibe)}</span></li>
-      <li class="is-sub"><span>words in the note${state.textMode === "semantic" ? " · meaning" : ""}</span><span>${fmt(row.text)}</span></li>
+    <p class="teach-lede">${escapeHtml(letterWhy(shard))}</p>
+    <ul class="teach-factors">
+      ${reasons.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}
+    </ul>
+    <div class="teach-scores">
+      <p class="teach-kicker">how it scored</p>
+      <ul class="teach-list">
+        <li><span>closeness to the job</span><span>${fmt(row.parts.job)}</span></li>
+        <li class="is-sub"><span>mood — grit, softness, people</span><span>${fmt(row.vibe)}</span></li>
+        <li class="is-sub"><span>words in the note${state.textMode === "semantic" ? " · meaning" : ""}</span><span>${fmt(row.text)}</span></li>
+        ${
+          row.image == null
+            ? ""
+            : row.imageMode === "semantic"
+              ? `<li><span>what the photo means</span><span>${fmt(row.image)}</span></li>
+                 <li class="is-sub"><span>the picture, against this job’s words</span></li>`
+              : `<li><span>how the photo feels</span><span>${fmt(row.image)}</span></li>
+                 <li class="is-sub"><span>brightness ${fmt(shard.imageVec[0])}, warmth ${fmt(shard.imageVec[1])} — ${escapeHtml(job.imageHint || "")}</span></li>`
+        }
+        <li><span>not shown recently</span><span>${fmt(row.parts.freshness)}</span></li>
+        <li><span>how recent the day was</span><span>${fmt(row.parts.recency)}</span></li>
+        <li><span>your likes and dislikes</span><span>${fmt(row.parts.feedback)}</span></li>
+        <li class="is-total"><span>together</span><span>${fmt(row.total)}</span></li>
+      </ul>
+      <p class="teach-kicker">closest three</p>
+      <ul class="teach-also">
+        ${top3
+          .map((item) => {
+            const here = item.shard.id === shard.id;
+            return `<li class="${here ? "is-here" : ""}"><span>${clip(item.shard.note)}${here ? " · this letter" : ""}</span><span>${fmt(item.total)}</span></li>`;
+          })
+          .join("")}
+      </ul>
       ${
-        row.image == null
-          ? ""
-          : row.imageMode === "semantic"
-            ? `<li><span>what the photo means</span><span>${fmt(row.image)}</span></li>
-               <li class="is-sub"><span>the picture, against this job’s words</span></li>`
-            : `<li><span>how the photo feels</span><span>${fmt(row.image)}</span></li>
-               <li class="is-sub"><span>brightness ${fmt(shard.imageVec[0])}, warmth ${fmt(shard.imageVec[1])} — ${escapeHtml(job.imageHint || "")}</span></li>`
+        learned
+          ? `<p class="teach-kicker">the mix</p>
+             <p class="teach-lede teach-mix-lede">Default on the left. Learned on the right.</p>
+             <ul class="teach-list teach-mix">
+               ${MIX_KEYS.map((key) => {
+                 const now = Number(learned[key] ?? WEIGHTS[key]);
+                 const moved = Math.abs(now - WEIGHTS[key]) >= 0.02;
+                 return `<li class="${moved ? "is-moved" : ""}"><span>${mixLabels[key]}</span><span>${fmt(WEIGHTS[key])} → ${fmt(now)}</span></li>`;
+               }).join("")}
+             </ul>`
+          : ""
       }
-      <li><span>not shown recently</span><span>${fmt(row.parts.freshness)}</span></li>
-      <li><span>how recent the day was</span><span>${fmt(row.parts.recency)}</span></li>
-      <li><span>your keep / nah marks</span><span>${fmt(row.parts.feedback)}</span></li>
-      <li class="is-total"><span>together</span><span>${fmt(row.total)}</span></li>
-    </ul>
-    <p class="teach-kicker">closest three</p>
-    <ul class="teach-also">
-      ${top3
-        .map((item) => {
-          const here = item.shard.id === shard.id;
-          return `<li class="${here ? "is-here" : ""}"><span>${clip(item.shard.note)}${here ? " · this letter" : ""}</span><span>${fmt(item.total)}</span></li>`;
-        })
-        .join("")}
-    </ul>
-    ${
-      learned
-        ? `<p class="teach-kicker">the mix</p>
-           <p class="teach-lede teach-mix-lede">Default on the left. Learned on the right.</p>
-           <ul class="teach-list teach-mix">
-             ${MIX_KEYS.map((key) => {
-               const now = Number(learned[key] ?? WEIGHTS[key]);
-               const moved = Math.abs(now - WEIGHTS[key]) >= 0.02;
-               return `<li class="${moved ? "is-moved" : ""}"><span>${mixLabels[key]}</span><span>${fmt(WEIGHTS[key])} → ${fmt(now)}</span></li>`;
-             }).join("")}
-           </ul>`
-        : ""
-    }
-    ${evalMarkup(store.loadEval())}
+      ${evalMarkup(store.loadEval())}
+      ${poolLine()}
+    </div>
     ${state.trainNote ? `<p class="teach-note">${escapeHtml(state.trainNote)}</p>` : ""}
     <div class="teach-actions">
       <button type="button" class="teach-act lens-seg" data-train="learn">learn from my marks</button>
@@ -1138,9 +1142,10 @@ function record(action) {
   });
 }
 
-// Like records keep; dislike records nah. A filled icon lifts that trailing
-// mark. Neither one turns the page — prev and next do that. An unmarked
-// letter is already a pass.
+// Like records keep; dislike records nah. They replace each other.
+// A second tap on the filled icon clears it to unmarked — it does not
+// bring the other mark back. Neither one turns the page — prev and next
+// do that. An unmarked letter is already a pass.
 async function onVote(action) {
   if (state.marking || state.animating || state.busy) return;
   if (action !== "keep" && action !== "nah") return;
