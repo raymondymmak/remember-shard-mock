@@ -1,6 +1,15 @@
 import { JOBS as RAW_JOBS, SHARDS as RAW_SHARDS } from "./shards.js";
 import { fingerprintImage } from "./image.js";
-import { MIX_KEYS, WEIGHTS, prepareJobs, prepareShards, rankShards } from "./ranker.js";
+import {
+  MIX_KEYS,
+  WEIGHTS,
+  jobDocument,
+  prepareJobs,
+  rankShards,
+  shardDocument,
+  withTextVectors,
+} from "./ranker.js";
+import { meaning } from "./meaning.js";
 import { explainEval, inspectLog, learnAndEvaluate } from "./train.js";
 import * as store from "./store.js";
 import * as library from "./library.js";
@@ -18,7 +27,7 @@ import {
   vibeFromNote,
 } from "./ingest.js";
 
-const JOBS = prepareJobs(RAW_JOBS);
+let JOBS = prepareJobs(RAW_JOBS);
 
 const jobsEl = document.querySelector("#jobs");
 const shardEl = document.querySelector("#shard");
@@ -33,6 +42,7 @@ const captureLibraryEl = document.querySelector("#capture-library");
 const captureDraftEl = document.querySelector("#capture-draft");
 const capturePreviewEl = document.querySelector("#capture-preview");
 const captureNoteEl = document.querySelector("#capture-note");
+const meaningEl = document.querySelector("#meaning");
 
 const capture = {
   file: null,
@@ -55,6 +65,7 @@ const state = {
   editing: false,
   busy: false,
   trainNote: "",
+  textMode: "hash",
 };
 
 function currentJob() {
@@ -74,13 +85,88 @@ function publicUrl(path) {
   return `${base}${String(path).replace(/^\//, "")}`;
 }
 
-function rebuildPool() {
+const MEANING_COPY = {
+  loading: "loading meaning…",
+  ready: "meaning ready",
+  fallback: "word match, for now",
+};
+
+function paintMeaning(status) {
+  if (!meaningEl) return;
+  meaningEl.textContent = MEANING_COPY[status] || "";
+}
+
+function rawShards() {
   const imported = library.list();
   const samples = library.includeSamplesOn() ? RAW_SHARDS : [];
-  pool = prepareShards([...samples, ...imported]).map((shard) => {
+  return [...samples, ...imported];
+}
+
+let vectorGen = 0;
+let vectorFlight = Promise.resolve();
+
+function applyVectors(mode, jobVecs, shardVecs, raw = rawShards()) {
+  const projected = withTextVectors(RAW_JOBS, raw, jobVecs, shardVecs, mode);
+  JOBS = projected.jobs;
+  pool = projected.shards.map((shard) => {
     const imageVec = imageFeel.get(shard.id);
     return imageVec ? { ...shard, imageVec } : shard;
   });
+  state.textMode = projected.mode === "semantic" ? "semantic" : "hash";
+  return state.textMode;
+}
+
+function applyCachedOrHash() {
+  const raw = rawShards();
+  const jobDocs = RAW_JOBS.map(jobDocument);
+  const shardDocs = raw.map(shardDocument);
+  const cached = meaning.cachedDocuments([...jobDocs, ...shardDocs]);
+  if (!cached) return applyVectors("hash", null, null, raw);
+  return applyVectors(
+    "semantic",
+    cached.slice(0, jobDocs.length),
+    cached.slice(jobDocs.length),
+    raw,
+  );
+}
+
+async function refreshVectors() {
+  const gen = ++vectorGen;
+  const raw = rawShards();
+  const jobDocs = RAW_JOBS.map(jobDocument);
+  const shardDocs = raw.map(shardDocument);
+  const result = await meaning.embedDocuments([...jobDocs, ...shardDocs]);
+  if (gen !== vectorGen) return result.mode;
+  const rawNow = rawShards();
+  const same =
+    rawNow.length === raw.length &&
+    rawNow.every((shard, i) => shard.id === raw[i].id && shardDocument(shard) === shardDocs[i]);
+  if (!same) return result.mode;
+  applyVectors(
+    result.mode,
+    result.vectors.slice(0, jobDocs.length),
+    result.vectors.slice(jobDocs.length),
+    rawNow,
+  );
+  if (booted && teachEl?.open) renderTeach();
+  return state.textMode;
+}
+
+function scheduleVectors() {
+  const run = refreshVectors().catch(() => {
+    applyCachedOrHash();
+    return state.textMode;
+  });
+  vectorFlight = run;
+  return run;
+}
+
+function rebuildPool() {
+  const mode = applyCachedOrHash();
+  const status = meaning.status();
+  if (mode !== "semantic" && (status === "ready" || status === "loading")) {
+    void scheduleVectors();
+  }
 }
 
 async function attachImageFeel(shards) {
@@ -95,8 +181,10 @@ async function attachImageFeel(shards) {
       try {
         const vec = await fingerprintImage(publicUrl(shard.photo));
         if (!vec) return;
-        imageFeel.set(shard.id, vec);
-        shard.imageVec = vec;
+      imageFeel.set(shard.id, vec);
+      shard.imageVec = vec;
+      const live = pool.find((item) => item.id === shard.id);
+      if (live && live !== shard) live.imageVec = vec;
       } catch {
         // Words still rank. A picture we can't read simply has no image term.
       }
@@ -353,7 +441,7 @@ function renderTeach() {
     <ul class="teach-list">
       <li><span>closeness to the job</span><span>${fmt(row.parts.job)}</span></li>
       <li class="is-sub"><span>vibe cosine — grit / softness / people</span><span>${fmt(row.vibe)}</span></li>
-      <li class="is-sub"><span>words in the note</span><span>${fmt(row.text)}</span></li>
+      <li class="is-sub"><span>words in the note${state.textMode === "semantic" ? " · meaning" : ""}</span><span>${fmt(row.text)}</span></li>
       ${
         row.image == null
           ? ""
@@ -474,7 +562,7 @@ function swapTo(shard, { kept = false } = {}) {
   }, 220);
 }
 
-function commitNote(text) {
+async function commitNote(text) {
   const shard = currentShard();
   if (!shard?.imported) return false;
   const written = noteBody(text);
@@ -485,20 +573,23 @@ function commitNote(text) {
     vibe: vibeFromNote(note),
     placeholder: !written,
   });
-  rebuildPool();
+  // A revised note needs a new vector. Wait only when meaning is already
+  // here — otherwise the hash stands in and the model fills it in later.
+  if (meaning.status() === "ready") await scheduleVectors();
+  else rebuildPool();
   return true;
 }
 
-function finishEditing() {
+async function finishEditing() {
   const area = shardEl.querySelector("#note-edit");
-  if (area) commitNote(area.value);
+  if (area) await commitNote(area.value);
   state.editing = false;
 }
 
-function chooseJob(jobId) {
+async function chooseJob(jobId) {
   if (!booted) return;
   if (jobId === state.job && state.shardId && !state.editing) return;
-  finishEditing();
+  await finishEditing();
   if (jobId === state.job && state.shardId) {
     renderShard();
     return;
@@ -538,15 +629,15 @@ function record(action) {
   });
 }
 
-function onKeep() {
-  finishEditing();
+async function onKeep() {
+  await finishEditing();
   record("keep");
   state.kept = true;
   renderShard();
 }
 
-function onAdvance(action) {
-  finishEditing();
+async function onAdvance(action) {
+  await finishEditing();
   record(action);
   const next = pickCandidate({ consumeCurrent: true });
   if (next) swapTo(next.shard);
@@ -573,7 +664,7 @@ function showFresh(ids, summary) {
 async function intake(entries) {
   if (!booted || state.busy || !entries?.length) return false;
   state.busy = true;
-  finishEditing();
+  await finishEditing();
   setHint("Reading…");
   try {
     const grouped = pairFiles(entries.map(classifyEntry));
@@ -603,6 +694,7 @@ async function intake(entries) {
     }
     const result = await library.rememberShards(drafts, blobs);
     rebuildPool();
+    if (meaning.status() === "ready") await vectorFlight;
     const freshIds = new Set([...result.added, ...result.updated].map((shard) => shard.id));
     await attachImageFeel(pool.filter((shard) => freshIds.has(shard.id)));
     const summary = describeIntake(grouped, {
@@ -637,19 +729,21 @@ shardEl.addEventListener("click", (event) => {
   }
   if (act === "done") {
     const area = shardEl.querySelector("#note-edit");
-    if (area) commitNote(area.value);
-    state.editing = false;
-    renderShard();
+    void (async () => {
+      if (area) await commitNote(area.value);
+      state.editing = false;
+      renderShard();
+    })();
     return;
   }
-  if (act === "keep") onKeep();
-  else if (act === "another") onAdvance("another");
-  else if (act === "nah") onAdvance("nah");
+  if (act === "keep") void onKeep();
+  else if (act === "another") void onAdvance("another");
+  else if (act === "nah") void onAdvance("nah");
 });
 
 shardEl.addEventListener("focusout", (event) => {
   if (event.target?.id !== "note-edit") return;
-  commitNote(event.target.value);
+  void commitNote(event.target.value);
 });
 
 shardEl.addEventListener("keydown", (event) => {
@@ -658,9 +752,12 @@ shardEl.addEventListener("keydown", (event) => {
     event.key === "Escape" || ((event.metaKey || event.ctrlKey) && event.key === "Enter");
   if (!done) return;
   event.preventDefault();
-  commitNote(event.target.value);
-  state.editing = false;
-  renderShard();
+  const area = event.target;
+  void (async () => {
+    await commitNote(area.value);
+    state.editing = false;
+    renderShard();
+  })();
 });
 
 function evalMarkup(report) {
@@ -672,8 +769,8 @@ function evalMarkup(report) {
   `;
 }
 
-function onLearn() {
-  finishEditing();
+async function onLearn() {
+  await finishEditing();
   const check = inspectLog(store.log());
   if (!check.ok) {
     state.trainNote = check.reason;
@@ -689,8 +786,8 @@ function onLearn() {
   else showEmpty();
 }
 
-function onResetMix() {
-  finishEditing();
+async function onResetMix() {
+  await finishEditing();
   store.clearWeights();
   state.trainNote = "Back to the hand-written mix.";
   state.usedIds = new Set();
@@ -702,7 +799,7 @@ function onResetMix() {
 async function onForget() {
   const shard = currentShard();
   if (!shard?.imported) return;
-  finishEditing();
+  await finishEditing();
   await library.forget(shard.id);
   rebuildPool();
   state.usedIds = new Set();
@@ -712,9 +809,9 @@ async function onForget() {
   else showEmpty();
 }
 
-function onSamplesToggle() {
+async function onSamplesToggle() {
   if (!booted) return;
-  finishEditing();
+  await finishEditing();
   const shardId = state.shardId;
   library.setIncludeSamples(!library.includeSamplesOn());
   rebuildPool();
@@ -739,8 +836,8 @@ teachEl.addEventListener("click", (event) => {
   if (!button) return;
   event.preventDefault();
   const act = button.dataset.train;
-  if (act === "learn") onLearn();
-  else if (act === "reset") onResetMix();
+  if (act === "learn") void onLearn();
+  else if (act === "reset") void onResetMix();
   else if (act === "export") store.downloadLog();
   else if (act === "forget") void onForget();
 });
@@ -831,7 +928,9 @@ document.querySelector("#bring-folder")?.addEventListener("click", () => {
   pickFolderEl?.click();
 });
 
-samplesBtn?.addEventListener("click", onSamplesToggle);
+samplesBtn?.addEventListener("click", () => {
+  void onSamplesToggle();
+});
 
 pickFilesEl?.addEventListener("change", () => {
   const files = pickFilesEl.files;
@@ -919,10 +1018,25 @@ async function boot() {
   const first = pickCandidate();
   if (!first) {
     showEmpty();
-    return;
-  }
-  if (first.shard.id === previewId) applyShard(first.shard);
+  } else if (first.shard.id === previewId) applyShard(first.shard);
   else swapTo(first.shard);
+
+  // The letter is up. Meaning loads after, and ranking switches when it lands.
+  meaning.subscribe((status) => {
+    paintMeaning(status);
+    if (status !== "ready" && status !== "fallback") return;
+    void scheduleVectors().then(() => {
+      // One quiet correction: if nobody has marked or moved on, show the
+      // letter meaning would have picked. After that, leave the page alone.
+      if (status !== "ready") return;
+      if (!booted || state.editing || state.busy || state.kept || state.animating) return;
+      if (state.usedIds.size) return;
+      const next = pickCandidate();
+      if (!next || next.shard.id === state.shardId) return;
+      swapTo(next.shard);
+    });
+  });
+  void meaning.load();
 }
 
 boot();

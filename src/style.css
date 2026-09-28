@@ -75,6 +75,18 @@ body {
   color: var(--ink-soft);
 }
 
+.meaning {
+  margin: 0.7rem 0 0;
+  min-height: 1.15em;
+  text-align: center;
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 360;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--mute);
+}
+
 .jobs {
   margin-bottom: 1.6rem;
 }

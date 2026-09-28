@@ -3,13 +3,18 @@ import { describe, it } from "node:test";
 import { JOBS, SHARDS } from "./shards.js";
 import { fingerprintFromPixels } from "./image.js";
 import {
+  EMBED_DIM,
+  MIX_KEYS,
   WEIGHTS,
   cosine,
   embedText,
   feedbackScore,
+  jobDocument,
   prepareJobs,
   prepareShards,
   rankShards,
+  shardDocument,
+  withTextVectors,
 } from "./ranker.js";
 
 const jobs = prepareJobs(JOBS);
@@ -29,8 +34,105 @@ describe("representations", () => {
     const a = embedText("keep going when the day feels heavy");
     const b = embedText("keep going when the day feels heavy");
     const c = embedText("quiet rain and ordinary sunday light");
+    assert.equal(a.length, EMBED_DIM);
+    assert.equal(b.length, EMBED_DIM);
     assert.ok(cosine(a, b) > 0.99);
     assert.ok(cosine(a, a) > cosine(a, c));
+  });
+
+  it("prepare uses the hash unless a caller passes another embedder", () => {
+    const hashed = prepareShards(SHARDS);
+    assert.deepEqual(hashed[0].textVec, embedText(shardDocument(SHARDS[0])));
+    assert.equal(hashed[0].textVec.length, EMBED_DIM);
+
+    const jobs = prepareJobs(JOBS, () => [1, 0, 0]);
+    assert.deepEqual(jobs[0].textVec, [1, 0, 0]);
+    assert.equal(jobs[0].textVec.length, 3);
+  });
+});
+
+// A stand-in for the sentence model: shared ideas land on the same axis,
+// even when the words do not match. The hash cannot see that.
+function toyMeaning(text) {
+  const t = String(text).toLowerCase();
+  const axes = [
+    ["push", "heavy", "keep going", "kept going", "anyway", "continued", "motivation"],
+    ["rain", "quiet", "sunday", "gentle", "ordinary", "window"],
+    ["friend", "dinner", "laugh", "names", "people", "together"],
+  ];
+  const vec = axes.map((words) => words.reduce((n, word) => n + (t.includes(word) ? 1 : 0), 0));
+  vec.push(0.05);
+  const norm = Math.hypot(...vec) || 1;
+  return vec.map((n) => n / norm);
+}
+
+describe("sentence vectors", () => {
+  const now = Date.parse("2026-09-28T12:00:00Z");
+  const collision = {
+    id: "collision",
+    date: "2020-01-01",
+    note: "I opened the door to finish.",
+    why: "A small errand.",
+    vibe: [0.5, 0.5, 0.5],
+  };
+  const paraphrase = {
+    id: "paraphrase",
+    date: "2020-01-01",
+    note: "I continued anyway.",
+    why: "It was hard, and I kept moving.",
+    vibe: [0.5, 0.5, 0.5],
+  };
+
+  it("ranks a paraphrase above a keyword collision, and the hash does the opposite", () => {
+    const semantic = withTextVectors(
+      JOBS,
+      [collision, paraphrase],
+      JOBS.map((job) => toyMeaning(jobDocument(job))),
+      [collision, paraphrase].map((shard) => toyMeaning(shardDocument(shard))),
+      "semantic",
+    );
+    assert.equal(semantic.mode, "semantic");
+    assert.equal(semantic.jobs[0].textVec.length, semantic.shards[0].textVec.length);
+    assert.notEqual(semantic.shards[0].textVec.length, EMBED_DIM);
+
+    const ranked = rankShards({
+      shards: semantic.shards,
+      job: semantic.jobs.find((job) => job.id === "push"),
+      now,
+    });
+    assert.equal(ranked[0].shard.id, "paraphrase");
+    assert.ok(ranked[0].text > ranked[1].text);
+    assert.equal(typeof ranked[0].text, "number");
+    assert.equal(typeof ranked[0].vibe, "number");
+    assert.equal(typeof ranked[0].parts.job, "number");
+    assert.equal(typeof ranked[0].parts.freshness, "number");
+    assert.equal(typeof ranked[0].parts.recency, "number");
+    assert.deepEqual(Object.keys(ranked[0].parts).sort(), [
+      "feedback",
+      "freshness",
+      "image",
+      "job",
+      "recency",
+    ]);
+    assert.deepEqual(MIX_KEYS, ["job", "freshness", "recency", "vibe", "text"]);
+
+    const hashed = withTextVectors(JOBS, [collision, paraphrase], null, null, "hash");
+    assert.equal(hashed.mode, "hash");
+    assert.equal(hashed.shards[0].textVec.length, EMBED_DIM);
+    const hashRanked = rankShards({
+      shards: hashed.shards,
+      job: hashed.jobs.find((job) => job.id === "push"),
+      now,
+    });
+    assert.equal(hashRanked[0].shard.id, "collision");
+  });
+
+  it("refuses to mix vector widths and keeps the hash", () => {
+    const mixed = withTextVectors(JOBS, [collision], [[1, 0]], [[1, 0, 0]], "semantic");
+    assert.equal(mixed.mode, "hash");
+    assert.equal(mixed.jobs[0].textVec.length, EMBED_DIM);
+    assert.equal(mixed.shards[0].textVec.length, EMBED_DIM);
+    assert.equal(mixed.shards[0].note, collision.note);
   });
 });
 

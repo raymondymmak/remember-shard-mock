@@ -1,7 +1,9 @@
 import { imageSimilarity } from "./image.js";
 
-// Tiny retrieve → rank loop. Not a neural net.
+// Tiny retrieve → rank loop.
 // We score every shard for the current job, then the letter is whoever wins.
+// Word closeness is cosine. The vector is a sentence embedding when meaning
+// is ready (see src/meaning.js), otherwise the hashed bag below.
 
 export const EMBED_DIM = 48;
 
@@ -90,6 +92,8 @@ function hashToken(token) {
 }
 
 // Hashed term-frequency vector, then L2-normalized so cosine is well-behaved.
+// This is the offline fallback: same width every time, no download.
+// Sentence meaning uses a different width; callers must not mix the two.
 export function embedText(text) {
   const vec = new Array(EMBED_DIM).fill(0);
   const tokens = tokenize(text);
@@ -101,6 +105,14 @@ export function embedText(text) {
 
   const norm = Math.hypot(...vec) || 1;
   return vec.map((n) => n / norm);
+}
+
+export function jobDocument(job) {
+  return `${job.label} ${job.hint} ${job.query}`;
+}
+
+export function shardDocument(shard) {
+  return `${shard.note} ${shard.why}`;
 }
 
 // Cosine similarity: 1 means same direction, 0 means unrelated, -1 opposite.
@@ -118,18 +130,51 @@ export function cosine(a, b) {
   return denom === 0 ? 0 : dot / denom;
 }
 
-export function prepareJobs(jobs) {
+export function prepareJobs(jobs, embed = embedText) {
   return jobs.map((job) => ({
     ...job,
-    textVec: embedText(`${job.label} ${job.hint} ${job.query}`),
+    textVec: embed(jobDocument(job)),
   }));
 }
 
-export function prepareShards(shards) {
+export function prepareShards(shards, embed = embedText) {
   return shards.map((shard) => ({
     ...shard,
-    textVec: embedText(`${shard.note} ${shard.why}`),
+    textVec: embed(shardDocument(shard)),
   }));
+}
+
+function sameWidth(vecs, dim) {
+  return vecs.every((vec) => vec && typeof vec.length === "number" && vec.length === dim);
+}
+
+// Swap in sentence vectors only when every job and shard shares one width.
+// A mismatch falls back to the hash so cosine never mixes two lengths.
+// Score parts stay scalars either way — only the vectors behind them change.
+export function withTextVectors(jobs, shards, jobVecs, shardVecs, mode = "semantic") {
+  const dim = jobVecs?.[0]?.length;
+  const aligned =
+    mode === "semantic" &&
+    jobs.length > 0 &&
+    jobVecs?.length === jobs.length &&
+    shardVecs?.length === shards.length &&
+    dim > 0 &&
+    sameWidth(jobVecs, dim) &&
+    sameWidth(shardVecs, dim);
+
+  if (!aligned) {
+    return {
+      jobs: prepareJobs(jobs),
+      shards: prepareShards(shards),
+      mode: "hash",
+    };
+  }
+
+  return {
+    jobs: jobs.map((job, i) => ({ ...job, textVec: jobVecs[i] })),
+    shards: shards.map((shard, i) => ({ ...shard, textVec: shardVecs[i] })),
+    mode: "semantic",
+  };
 }
 
 // Newer memories get a small lift. Optional on purpose — this is not On This Day.
