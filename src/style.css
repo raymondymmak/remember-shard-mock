@@ -801,6 +801,17 @@ body.is-receiving .receive {
   color: var(--mute);
 }
 
+.folio-rank {
+  margin: -0.2rem 0 0;
+  text-align: center;
+  font-family: var(--serif);
+  font-size: 0.86rem;
+  font-style: italic;
+  font-weight: 360;
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+
 .folio-all {
   display: block;
   margin: -0.15rem auto 0;

@@ -54,6 +54,7 @@ const captureNoteEl = document.querySelector("#capture-note");
 const meaningEl = document.querySelector("#meaning");
 const folioEl = document.querySelector("#folio");
 const folioPlaceEl = document.querySelector("#folio-place");
+const folioRankEl = document.querySelector("#folio-rank");
 const folioPrevEl = document.querySelector("#folio-prev");
 const folioNextEl = document.querySelector("#folio-next");
 const folioAllEl = document.querySelector("#folio-all");
@@ -544,23 +545,19 @@ function fmt(n) {
   return n.toFixed(2);
 }
 
-function ordinal(n) {
-  const mod = n % 100;
-  if (mod >= 11 && mod <= 13) return `${n}th`;
-  switch (n % 10) {
-    case 1:
-      return `${n}st`;
-    case 2:
-      return `${n}nd`;
-    case 3:
-      return `${n}rd`;
-    default:
-      return `${n}th`;
-  }
+let hintLead = (hintEl?.textContent || "").replace(/\s+/g, " ").trim();
+
+function paintHint(placement = currentPlacement()) {
+  if (!hintEl) return;
+  const rank = placement?.letter ? `This one ${placement.letter}.` : "";
+  hintEl.textContent = [hintLead, rank].filter(Boolean).join(" ");
 }
 
 function setHint(text) {
-  if (hintEl) hintEl.textContent = text;
+  hintLead = String(text ?? "")
+    .replace(/\s*This one ranked \d+(?:st|nd|rd|th) of \d+\.?/gi, "")
+    .trim();
+  paintHint();
 }
 
 function syncSamplesToggle() {
@@ -720,6 +717,14 @@ function refreshLetterWhy() {
   if (shard && line) line.textContent = letterWhy(shard);
   if (!state.browsed) folioIds = [];
   renderFolio();
+  if (teachEl?.open) renderTeach();
+}
+
+function currentPlacement() {
+  const shard = currentShard();
+  if (!shard) return null;
+  const placement = rankPlace(folioShards(), shard.id);
+  return placement.letter ? placement : null;
 }
 
 function syncKept() {
@@ -817,16 +822,20 @@ function renderFolio() {
   const shard = currentShard();
   if (!shard) {
     folioEl.hidden = true;
+    paintHint(null);
     return;
   }
   const shards = folioShards();
   const place = rankPlace(shards, shard.id);
   if (!place.total || place.index < 0) {
     folioEl.hidden = true;
+    paintHint(null);
     return;
   }
   folioEl.hidden = false;
   if (folioPlaceEl) folioPlaceEl.textContent = place.label;
+  if (folioRankEl) folioRankEl.textContent = `This one ${place.letter}.`;
+  paintHint(place);
   if (folioPrevEl) folioPrevEl.disabled = place.index <= 0;
   if (folioNextEl) folioNextEl.disabled = place.index >= place.total - 1;
   if (drawerOpen()) renderFolioList(shards);
@@ -879,14 +888,20 @@ function renderTeach() {
     return;
   }
 
-  const ranked = rerank({ shown: shownForExplain() });
+  const viewed = folioShards();
+  const placement = rankPlace(viewed, shard.id);
+  const ranked = rerank({ shown: shownForFolio() });
   const row = ranked.find((item) => item.shard.id === shard.id);
-  if (!row) {
+  if (!row || !placement.letter) {
     teachBodyEl.innerHTML = poolLine();
     return;
   }
 
-  const top3 = ranked.slice(0, 3);
+  const byId = new Map(ranked.map((item) => [item.shard.id, item]));
+  const top3 = viewed
+    .slice(0, 3)
+    .map((item) => byId.get(item.id))
+    .filter(Boolean);
   const job = currentJob();
   const learned = store.loadWeights();
   const mixLabels = {
@@ -896,15 +911,12 @@ function renderTeach() {
     vibe: "grit / softness / people",
     text: "words in the note",
   };
-  const place = ranked.findIndex((item) => item.shard.id === shard.id) + 1;
 
   teachBodyEl.innerHTML = `
     ${poolLine()}
     <p class="teach-lede">
       The job asked for <em>${escapeHtml(job.label)}</em>.
-      Here is how this memory scored among ${ranked.length}${
-        shard.imported ? `, placing ${ordinal(place)}` : ""
-      }.
+      Here is how this memory ${placement.teach}.
     </p>
     <p class="teach-kicker">how it scored</p>
     <ul class="teach-list">
@@ -1196,14 +1208,13 @@ function showFresh(ids, summary) {
   }
   state.usedIds = new Set();
   resetBrowse();
-  const ranking = rerank();
+  const ranking = rerank({ shown: shownForFolio() });
   const best = ranking.find((row) => ids.has(row.shard.id));
   if (!best) {
     setHint(summary);
     return;
   }
-  const place = ranking.findIndex((row) => row.shard.id === best.shard.id) + 1;
-  setHint(`${summary} This one ranked ${ordinal(place)} of ${ranking.length}.`);
+  setHint(summary);
   swapTo(best.shard);
 }
 

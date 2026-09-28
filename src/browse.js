@@ -5,6 +5,39 @@ function rowId(row) {
   return row.id || "";
 }
 
+export function ordinal(n) {
+  const mod = n % 100;
+  if (mod >= 11 && mod <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1:
+      return `${n}st`;
+    case 2:
+      return `${n}nd`;
+    case 3:
+      return `${n}rd`;
+    default:
+      return `${n}th`;
+  }
+}
+
+// One place, one pool size. The letter line and the why panel both read this,
+// so "4th of 13" and "placing 1st" cannot come from two rankings.
+export function describePlacement(index, total) {
+  if (!Number.isInteger(index) || index < 0) return null;
+  if (!Number.isInteger(total) || total < 1 || index >= total) return null;
+  const place = index + 1;
+  const word = ordinal(place);
+  return {
+    index,
+    place,
+    total,
+    ordinal: word,
+    ofLabel: `${place} of ${total}`,
+    letter: `ranked ${word} of ${total}`,
+    teach: `scored among ${total}, placing ${word}`,
+  };
+}
+
 export function rankIds(ranking) {
   if (!Array.isArray(ranking)) return [];
   return ranking.map(rowId).filter(Boolean);
@@ -15,10 +48,11 @@ export function rankPlace(ranking, shardId) {
   const ids = rankIds(ranking);
   const total = ids.length;
   const index = shardId ? ids.indexOf(shardId) : -1;
-  if (!total || index < 0) {
-    return { index: -1, place: 0, total, label: "" };
+  const copy = describePlacement(index, total);
+  if (!copy) {
+    return { index: -1, place: 0, total, label: "", ordinal: "", letter: "", teach: "" };
   }
-  return { index, place: index + 1, total, label: `${index + 1} of ${total}` };
+  return { ...copy, label: copy.ofLabel };
 }
 
 // Step through ranked order. Ends do not wrap — the pool has a first and a last.
