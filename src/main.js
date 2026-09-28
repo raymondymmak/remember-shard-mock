@@ -31,6 +31,8 @@ import {
 } from "./ingest.js";
 import { composeWhy } from "./why.js";
 import { poolFace } from "./own.js";
+import { isKept } from "./marks.js";
+import { rankPlace, stepRank } from "./browse.js";
 
 let JOBS = prepareJobs(RAW_JOBS);
 
@@ -50,6 +52,14 @@ const captureDraftEl = document.querySelector("#capture-draft");
 const capturePreviewEl = document.querySelector("#capture-preview");
 const captureNoteEl = document.querySelector("#capture-note");
 const meaningEl = document.querySelector("#meaning");
+const folioEl = document.querySelector("#folio");
+const folioPlaceEl = document.querySelector("#folio-place");
+const folioRankEl = document.querySelector("#folio-rank");
+const folioPrevEl = document.querySelector("#folio-prev");
+const folioNextEl = document.querySelector("#folio-next");
+const folioAllEl = document.querySelector("#folio-all");
+const folioDrawerEl = document.querySelector("#folio-drawer");
+const folioListEl = document.querySelector("#folio-list");
 
 const capture = {
   file: null,
@@ -74,11 +84,22 @@ const state = {
   ranking: [],
   animating: false,
   kept: false,
+  // True only after keep on the letter now showing, so a loading model
+  // does not swap it away. The button itself is read from the log.
+  held: false,
+  // True once prev / next / all shards has left the retrieved letter.
+  // The ranked order stays put until the next retrieve.
+  browsed: false,
+  marking: false,
   editing: false,
   busy: false,
   trainNote: "",
   textMode: "hash",
 };
+
+// Shard ids in ranked order for the folio. Frozen while browsing so
+// "3 of 12" does not reshuffle as freshness updates.
+let folioIds = [];
 
 function currentJob() {
   return JOBS.find((job) => job.id === state.job);
@@ -524,23 +545,19 @@ function fmt(n) {
   return n.toFixed(2);
 }
 
-function ordinal(n) {
-  const mod = n % 100;
-  if (mod >= 11 && mod <= 13) return `${n}th`;
-  switch (n % 10) {
-    case 1:
-      return `${n}st`;
-    case 2:
-      return `${n}nd`;
-    case 3:
-      return `${n}rd`;
-    default:
-      return `${n}th`;
-  }
+let hintLead = (hintEl?.textContent || "").replace(/\s+/g, " ").trim();
+
+function paintHint(placement = currentPlacement()) {
+  if (!hintEl) return;
+  const rank = placement?.letter ? `This one ${placement.letter}.` : "";
+  hintEl.textContent = [hintLead, rank].filter(Boolean).join(" ");
 }
 
 function setHint(text) {
-  if (hintEl) hintEl.textContent = text;
+  hintLead = String(text ?? "")
+    .replace(/\s*This one ranked \d+(?:st|nd|rd|th) of \d+\.?/gi, "")
+    .trim();
+  paintHint();
 }
 
 function syncSamplesToggle() {
@@ -697,8 +714,138 @@ function refreshLetterWhy() {
   if (!booted || state.editing) return;
   const shard = currentShard();
   const line = shardEl.querySelector(".why");
-  if (!shard || !line) return;
-  line.textContent = letterWhy(shard);
+  if (shard && line) line.textContent = letterWhy(shard);
+  if (!state.browsed) folioIds = [];
+  renderFolio();
+  if (teachEl?.open) renderTeach();
+}
+
+function currentPlacement() {
+  const shard = currentShard();
+  if (!shard) return null;
+  const placement = rankPlace(folioShards(), shard.id);
+  return placement.letter ? placement : null;
+}
+
+function syncKept() {
+  state.kept = Boolean(state.shardId && isKept(store.log(), state.shardId, state.job));
+  return state.kept;
+}
+
+function resetBrowse() {
+  state.browsed = false;
+  folioIds = [];
+}
+
+function shownForFolio() {
+  const shown = { ...store.shown() };
+  if (state.shardId) delete shown[state.shardId];
+  return shown;
+}
+
+function ensureFolioOrder() {
+  const missing = state.shardId && folioIds.length && !folioIds.includes(state.shardId);
+  if (state.browsed && folioIds.length && !missing) return folioIds;
+  folioIds = rerank({ excludeIds: [], shown: shownForFolio() }).map((row) => row.shard.id);
+  return folioIds;
+}
+
+function folioShards() {
+  const byId = new Map(pool.map((shard) => [shard.id, shard]));
+  return ensureFolioOrder()
+    .map((id) => byId.get(id))
+    .filter(Boolean);
+}
+
+function paintKeepButton() {
+  const button = shardEl.querySelector('[data-act="keep"]');
+  if (!button) return;
+  button.classList.toggle("is-kept", state.kept);
+  button.textContent = state.kept ? "kept" : "keep";
+  button.setAttribute("aria-pressed", state.kept ? "true" : "false");
+}
+
+function folioThumb(shard) {
+  if (shard.photo) {
+    return `<img src="${escapeHtml(publicUrl(shard.photo))}" alt="" />`;
+  }
+  const wash = paperWash(shard.note || shard.id);
+  return `<span class="folio-paper" style="--wash: ${wash}"></span>`;
+}
+
+function folioItem(shard, index, here) {
+  return `
+    <li>
+      <button
+        type="button"
+        class="folio-item${here ? " is-here" : ""}"
+        data-shard="${escapeHtml(shard.id)}"
+        ${here ? 'aria-current="true"' : ""}
+      >
+        <span class="folio-thumb">${folioThumb(shard)}</span>
+        <span class="folio-copy">
+          <span class="folio-index">${index + 1}${here ? " · this letter" : ""}</span>
+          <span class="folio-note">${clip(shard.note, 72)}</span>
+        </span>
+      </button>
+    </li>
+  `;
+}
+
+function drawerOpen() {
+  return folioAllEl?.getAttribute("aria-expanded") === "true";
+}
+
+function revealFolioHere() {
+  if (!folioDrawerEl) return;
+  const here = folioDrawerEl.querySelector(".is-here");
+  if (!here) return;
+  const drawerRect = folioDrawerEl.getBoundingClientRect();
+  const hereRect = here.getBoundingClientRect();
+  if (hereRect.top < drawerRect.top) {
+    folioDrawerEl.scrollTop -= drawerRect.top - hereRect.top;
+  } else if (hereRect.bottom > drawerRect.bottom) {
+    folioDrawerEl.scrollTop += hereRect.bottom - drawerRect.bottom;
+  }
+}
+
+function renderFolioList(shards) {
+  if (!folioListEl) return;
+  folioListEl.innerHTML = shards
+    .map((shard, index) => folioItem(shard, index, shard.id === state.shardId))
+    .join("");
+  if (drawerOpen()) revealFolioHere();
+}
+
+function renderFolio() {
+  if (!folioEl) return;
+  const shard = currentShard();
+  if (!shard) {
+    folioEl.hidden = true;
+    paintHint(null);
+    return;
+  }
+  const shards = folioShards();
+  const place = rankPlace(shards, shard.id);
+  if (!place.total || place.index < 0) {
+    folioEl.hidden = true;
+    paintHint(null);
+    return;
+  }
+  folioEl.hidden = false;
+  if (folioPlaceEl) folioPlaceEl.textContent = place.label;
+  if (folioRankEl) folioRankEl.textContent = `This one ${place.letter}.`;
+  paintHint(place);
+  if (folioPrevEl) folioPrevEl.disabled = place.index <= 0;
+  if (folioNextEl) folioNextEl.disabled = place.index >= place.total - 1;
+  if (drawerOpen()) renderFolioList(shards);
+}
+
+function setDrawer(open) {
+  if (!folioAllEl || !folioDrawerEl) return;
+  folioAllEl.setAttribute("aria-expanded", open ? "true" : "false");
+  folioDrawerEl.hidden = !open;
+  if (open) renderFolioList(folioShards());
 }
 
 function shardMarkup(shard) {
@@ -710,7 +857,7 @@ function shardMarkup(shard) {
     <p class="why">${escapeHtml(letterWhy(shard))}</p>
     <p class="when">${escapeHtml(formatWhen(shard.date))}${yours}</p>
     <div class="marks" role="group" aria-label="How this memory landed">
-      <button type="button" class="mark ${state.kept ? "is-kept" : ""}" data-act="keep">
+      <button type="button" class="mark ${state.kept ? "is-kept" : ""}" data-act="keep" aria-pressed="${state.kept ? "true" : "false"}">
         ${state.kept ? "kept" : "keep"}
       </button>
       <button type="button" class="mark" data-act="another">another</button>
@@ -741,14 +888,20 @@ function renderTeach() {
     return;
   }
 
-  const ranked = rerank({ shown: shownForExplain() });
+  const viewed = folioShards();
+  const placement = rankPlace(viewed, shard.id);
+  const ranked = rerank({ shown: shownForFolio() });
   const row = ranked.find((item) => item.shard.id === shard.id);
-  if (!row) {
+  if (!row || !placement.letter) {
     teachBodyEl.innerHTML = poolLine();
     return;
   }
 
-  const top3 = ranked.slice(0, 3);
+  const byId = new Map(ranked.map((item) => [item.shard.id, item]));
+  const top3 = viewed
+    .slice(0, 3)
+    .map((item) => byId.get(item.id))
+    .filter(Boolean);
   const job = currentJob();
   const learned = store.loadWeights();
   const mixLabels = {
@@ -758,15 +911,12 @@ function renderTeach() {
     vibe: "grit / softness / people",
     text: "words in the note",
   };
-  const place = ranked.findIndex((item) => item.shard.id === shard.id) + 1;
 
   teachBodyEl.innerHTML = `
     ${poolLine()}
     <p class="teach-lede">
       The job asked for <em>${escapeHtml(job.label)}</em>.
-      Here is how this memory scored among ${ranked.length}${
-        shard.imported ? `, placing ${ordinal(place)}` : ""
-      }.
+      Here is how this memory ${placement.teach}.
     </p>
     <p class="teach-kicker">how it scored</p>
     <ul class="teach-list">
@@ -832,6 +982,7 @@ function renderEmpty() {
     </div>
   `;
   renderTeach();
+  renderFolio();
 }
 
 function renderShard() {
@@ -840,38 +991,42 @@ function renderShard() {
     renderEmpty();
     return;
   }
+  syncKept();
   shardEl.innerHTML = shardMarkup(shard);
   if (state.editing) focusEditor(shard);
   renderTeach();
+  renderFolio();
 }
 
 function showEmpty() {
   state.shardId = null;
   state.kept = false;
+  state.held = false;
   state.editing = false;
+  resetBrowse();
   renderJobs();
   renderEmpty();
 }
 
-function applyShard(shard, { kept = false } = {}) {
+function applyShard(shard, { rememberShown = true } = {}) {
   state.shardId = shard.id;
-  state.kept = kept;
+  state.held = false;
   state.editing = false;
-  store.markShown(shard.id);
+  if (rememberShown) store.markShown(shard.id);
   renderJobs();
   renderShard();
 }
 
 let flight = 0;
 
-function swapTo(shard, { kept = false } = {}) {
+function swapTo(shard, { rememberShown = true } = {}) {
   if (!shard) return;
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   if (reduce || state.animating || shard.id === state.shardId) {
     flight += 1;
     state.animating = false;
     shardEl.classList.remove("is-leaving", "is-entering");
-    applyShard(shard, { kept });
+    applyShard(shard, { rememberShown });
     return;
   }
 
@@ -881,7 +1036,7 @@ function swapTo(shard, { kept = false } = {}) {
 
   window.setTimeout(() => {
     if (token !== flight) return;
-    applyShard(shard, { kept });
+    applyShard(shard, { rememberShown });
     shardEl.classList.remove("is-leaving");
     shardEl.classList.add("is-entering");
     window.requestAnimationFrame(() => {
@@ -930,6 +1085,7 @@ async function chooseJob(jobId) {
   }
   state.job = jobId;
   state.usedIds = new Set();
+  resetBrowse();
   const next = pickCandidate();
   if (next) swapTo(next.shard);
   else showEmpty();
@@ -964,18 +1120,85 @@ function record(action) {
 }
 
 async function onKeep() {
-  await finishEditing();
-  record("keep");
-  state.kept = true;
-  renderShard();
+  if (state.marking || state.animating || state.busy) return;
+  const shardId = state.shardId;
+  const jobId = state.job;
+  if (!shardId) return;
+  state.marking = true;
+  const wasEditing = state.editing;
+  try {
+    await finishEditing();
+    if (state.shardId !== shardId || state.job !== jobId) return;
+    if (isKept(store.log(), shardId, jobId)) {
+      store.undoKeep(shardId, jobId);
+      state.held = false;
+    } else {
+      record("keep");
+      state.held = true;
+    }
+    syncKept();
+    if (wasEditing) renderShard();
+    else {
+      paintKeepButton();
+      if (!state.browsed) renderFolio();
+      if (teachEl?.open) renderTeach();
+    }
+  } finally {
+    state.marking = false;
+  }
 }
 
 async function onAdvance(action) {
-  await finishEditing();
-  record(action);
-  const next = pickCandidate({ consumeCurrent: true });
-  if (next) swapTo(next.shard);
-  else showEmpty();
+  if (state.marking) return;
+  state.marking = true;
+  try {
+    await finishEditing();
+    record(action);
+    resetBrowse();
+    const next = pickCandidate({ consumeCurrent: true });
+    if (next) swapTo(next.shard);
+    else showEmpty();
+  } finally {
+    state.marking = false;
+  }
+}
+
+async function browseBy(delta) {
+  if (!booted || state.busy || state.animating || state.marking) return;
+  state.marking = true;
+  try {
+    await finishEditing();
+    ensureFolioOrder();
+    const step = stepRank(
+      folioIds.map((id) => ({ id })),
+      state.shardId,
+      delta,
+    );
+    if (!step) return;
+    const shard = pool.find((item) => item.id === step.id);
+    if (!shard || shard.id === state.shardId) return;
+    state.browsed = true;
+    swapTo(shard, { rememberShown: false });
+  } finally {
+    state.marking = false;
+  }
+}
+
+async function openRanked(shardId) {
+  if (!booted || state.busy || state.animating || state.marking) return;
+  if (!shardId || shardId === state.shardId) return;
+  state.marking = true;
+  try {
+    await finishEditing();
+    ensureFolioOrder();
+    if (!folioIds.includes(shardId)) return;
+    const shard = pool.find((item) => item.id === shardId);
+    if (!shard || shard.id === state.shardId) return;
+    state.browsed = true;
+    swapTo(shard, { rememberShown: false });
+  } finally {
+    state.marking = false;
+  }
 }
 
 function showFresh(ids, summary) {
@@ -984,14 +1207,14 @@ function showFresh(ids, summary) {
     return;
   }
   state.usedIds = new Set();
-  const ranking = rerank();
+  resetBrowse();
+  const ranking = rerank({ shown: shownForFolio() });
   const best = ranking.find((row) => ids.has(row.shard.id));
   if (!best) {
     setHint(summary);
     return;
   }
-  const place = ranking.findIndex((row) => row.shard.id === best.shard.id) + 1;
-  setHint(`${summary} This one ranked ${ordinal(place)} of ${ranking.length}.`);
+  setHint(summary);
   swapTo(best.shard);
 }
 
@@ -1050,13 +1273,13 @@ async function intake(entries) {
 
 jobsEl.addEventListener("click", (event) => {
   const button = event.target.closest("[data-job]");
-  if (!button || state.busy) return;
+  if (!button || state.busy || state.marking) return;
   chooseJob(button.dataset.job);
 });
 
 shardEl.addEventListener("click", (event) => {
   const button = event.target.closest("[data-act]");
-  if (!button || state.animating || state.busy) return;
+  if (!button || state.animating || state.busy || state.marking) return;
   const act = button.dataset.act;
   if (act === "revise") {
     state.editing = true;
@@ -1117,6 +1340,7 @@ async function onLearn() {
   store.saveWeights(weights, report);
   state.trainNote = `Learned from ${check.keeps} keep and ${check.nahs} nah.`;
   state.usedIds = new Set();
+  resetBrowse();
   const next = pickCandidate();
   if (next) swapTo(next.shard);
   else showEmpty();
@@ -1127,6 +1351,7 @@ async function onResetMix() {
   store.clearWeights();
   state.trainNote = "Back to the hand-written mix.";
   state.usedIds = new Set();
+  resetBrowse();
   const next = pickCandidate();
   if (next) swapTo(next.shard);
   else showEmpty();
@@ -1142,6 +1367,7 @@ async function onForget() {
   rebuildPool();
   syncPoolFace();
   state.usedIds = new Set();
+  resetBrowse();
   setHint("Let go. The pool moved on.");
   const next = pickCandidate();
   if (next) swapTo(next.shard);
@@ -1156,6 +1382,7 @@ async function onSamplesToggle() {
   rebuildPool();
   syncPoolFace();
   state.usedIds = new Set();
+  resetBrowse();
   if (shardId && pool.some((shard) => shard.id === shardId)) {
     renderJobs();
     renderShard();
@@ -1271,6 +1498,34 @@ samplesBtn?.addEventListener("click", () => {
   void onSamplesToggle();
 });
 
+folioPrevEl?.addEventListener("click", () => {
+  void browseBy(-1);
+});
+
+folioNextEl?.addEventListener("click", () => {
+  void browseBy(1);
+});
+
+folioAllEl?.addEventListener("click", () => {
+  if (state.busy || state.marking) return;
+  setDrawer(!drawerOpen());
+});
+
+folioListEl?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-shard]");
+  if (!button) return;
+  void openRanked(button.dataset.shard);
+});
+
+window.addEventListener("keydown", (event) => {
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+  const tag = event.target?.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || event.target?.isContentEditable) return;
+  if (event.metaKey || event.ctrlKey || event.altKey) return;
+  event.preventDefault();
+  void browseBy(event.key === "ArrowLeft" ? -1 : 1);
+});
+
 pickFilesEl?.addEventListener("change", () => {
   const files = pickFilesEl.files;
   if (files?.length) void intake(entriesFromFileList(files));
@@ -1329,11 +1584,14 @@ function paintPreview() {
     return null;
   }
   state.shardId = preview.shard.id;
-  state.kept = false;
+  state.held = false;
   state.editing = false;
+  resetBrowse();
+  syncKept();
   renderJobs();
   shardEl.innerHTML = shardMarkup(preview.shard);
   renderTeach();
+  renderFolio();
   return preview.shard.id;
 }
 
@@ -1363,7 +1621,7 @@ async function boot() {
   // The letter is up. Meaning and the photograph load after, and ranking
   // switches when they land — once, and only if nobody has moved on.
   function maybeAdopt() {
-    if (!booted || state.editing || state.busy || state.kept) return;
+    if (!booted || state.editing || state.busy || state.held || state.marking || state.browsed) return;
     if (state.usedIds.size) return;
     // The fingerprint letter may still be fading in. Try once that settles
     // so a fast model can still correct who is on the page.

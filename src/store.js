@@ -1,3 +1,5 @@
+import { withoutLatestKeep } from "./marks.js";
+
 const KEY = "remember.feedback.v0";
 const WEIGHTS_KEY = "remember.weights.v0";
 const LOG_CAP = 200;
@@ -56,6 +58,15 @@ export function recordFeedback({ shardId, job, action, scores, timestamp = Date.
   const log = load();
   log.push({ shardId, job, action, timestamp, scores });
   return save(log);
+}
+
+// Lift the keep that the button is showing. Other marks stay, including an
+// earlier keep that a later "another" or "nah" already superseded.
+export function undoKeep(shardId, job) {
+  const log = load();
+  const next = withoutLatestKeep(log, shardId, job);
+  if (next === log) return log;
+  return save(next);
 }
 
 export function markShown(shardId, timestamp = Date.now()) {
