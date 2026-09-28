@@ -158,7 +158,10 @@ describe("my shards", { concurrency: 1 }, () => {
     );
     assert.equal(html.includes('id="folio-rank"'), false);
     assert.equal(html.includes(">all shards<"), false);
-    assert.match(html, /id="folio-all"[\s\S]*id="folio-place"/);
+    assert.match(
+      html,
+      /id="folio-prev"[\s\S]*id="folio-all"[\s\S]*id="folio-place"[\s\S]*id="folio-next"/,
+    );
     assert.match(html, /<summary class="lens">why this showed up<\/summary>/);
   });
 });

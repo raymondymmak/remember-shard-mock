@@ -36,21 +36,21 @@
             <button type="button" class="folio-step lens-seg" id="folio-prev" aria-label="Previous letter">
               prev
             </button>
+            <button
+              type="button"
+              class="folio-all lens"
+              id="folio-all"
+              aria-expanded="false"
+              aria-controls="folio-drawer"
+              aria-label="1 of 1, show every shard"
+            >
+              <span class="folio-place" id="folio-place" aria-live="polite">1 of 1</span>
+            </button>
             <button type="button" class="folio-step lens-seg" id="folio-next" aria-label="Next letter">
               next
             </button>
           </div>
         </div>
-        <button
-          type="button"
-          class="folio-all lens"
-          id="folio-all"
-          aria-expanded="false"
-          aria-controls="folio-drawer"
-          aria-label="1 of 1, show every shard"
-        >
-          <span class="folio-place" id="folio-place" aria-live="polite">1 of 1</span>
-        </button>
         <div class="folio-drawer" id="folio-drawer" hidden>
           <p class="folio-kicker">ranked for this job</p>
           <ol class="folio-list" id="folio-list"></ol>
