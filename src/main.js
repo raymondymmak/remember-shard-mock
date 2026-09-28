@@ -571,6 +571,7 @@ function syncPoolFace() {
   const face = poolFace({
     ownCount: library.list().length,
     includeSamples: library.includeSamplesOn(),
+    drafting: Boolean(captureDraftEl && !captureDraftEl.hidden),
   });
   if (inviteEl) {
     inviteEl.textContent = face.invite;
@@ -1417,6 +1418,7 @@ function clearCapture() {
   if (capturePreviewEl) capturePreviewEl.removeAttribute("src");
   if (captureNoteEl) captureNoteEl.value = "";
   if (captureDraftEl) captureDraftEl.hidden = true;
+  syncPoolFace();
 }
 
 function showCaptureDraft(file) {
@@ -1446,6 +1448,7 @@ function showCaptureDraft(file) {
     captureDraftEl.hidden = false;
     captureDraftEl.scrollIntoView({ block: "nearest" });
   }
+  syncPoolFace();
 }
 
 async function onCaptureKeep() {

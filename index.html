@@ -58,10 +58,8 @@
 
       <section class="stage" aria-live="polite">
         <article class="shard" id="shard"></article>
-        <div class="capture" id="capture">
-          <p class="pool-invite" id="pool-invite">
-            Take a photo, choose one, or drop it here. A note if you want.
-          </p>
+        <div class="intake" id="capture">
+          <p class="pool-invite" id="pool-invite">One of yours, if you want.</p>
           <!-- Separate from the library input: capture skips the iOS photo picker. -->
           <input
             id="capture-camera"
@@ -78,9 +76,32 @@
             accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
             tabindex="-1"
           />
-          <p class="capture-line">
-            <button type="button" class="capture-act" id="capture-take">take a photo</button>
-            <button type="button" class="capture-act" id="capture-choose">choose one</button>
+          <input
+            id="pick-files"
+            class="sr-only"
+            type="file"
+            multiple
+            tabindex="-1"
+            accept=".jpg,.jpeg,.png,.webp,.md,.txt,.markdown,image/jpeg,image/png,image/webp,text/plain,text/markdown"
+          />
+          <input
+            id="pick-folder"
+            class="sr-only"
+            type="file"
+            multiple
+            tabindex="-1"
+            webkitdirectory
+            directory
+          />
+          <p class="intake-line">
+            <button type="button" class="intake-act" id="capture-take">take a photo</button>
+            <button type="button" class="intake-act" id="capture-choose">choose one</button>
+            <button type="button" class="intake-act" id="bring-files" aria-label="Choose photos or notes">
+              files
+            </button>
+            <button type="button" class="intake-act" id="bring-folder" aria-label="Choose a folder">
+              folder
+            </button>
           </p>
           <div class="capture-draft" id="capture-draft" hidden>
             <figure class="capture-print">
@@ -100,29 +121,8 @@
               <button type="button" class="capture-act" id="capture-discard">let it go</button>
             </p>
           </div>
-        </div>
-        <div class="bring" id="bring">
-          <input
-            id="pick-files"
-            class="sr-only"
-            type="file"
-            multiple
-            tabindex="-1"
-            accept=".jpg,.jpeg,.png,.webp,.md,.txt,.markdown,image/jpeg,image/png,image/webp,text/plain,text/markdown"
-          />
-          <input
-            id="pick-folder"
-            class="sr-only"
-            type="file"
-            multiple
-            tabindex="-1"
-            webkitdirectory
-            directory
-          />
-          <p class="bring-line">
-            <button type="button" class="bring-act" id="bring-files">bring a photo or a note</button>
-            <button type="button" class="bring-act" id="bring-folder">or a folder</button>
-            <button type="button" class="bring-act" id="samples-toggle" aria-pressed="true">
+          <p class="samples-line">
+            <button type="button" class="samples-act" id="samples-toggle" aria-pressed="true">
               samples in
             </button>
           </p>

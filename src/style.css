@@ -573,20 +573,28 @@ body {
   color: var(--ink-soft) !important;
 }
 
-.capture {
-  margin: 0.2rem 0.15rem 0;
+.intake {
+  margin: 0.35rem 0.15rem 0;
   text-align: center;
 }
 
+.intake:has(.pool-invite[hidden]) {
+  margin-top: 0.05rem;
+}
+
 .pool-invite {
-  margin: 0.15rem auto 0.05rem;
+  margin: 0 auto 0.05rem;
   max-width: 22em;
   font-family: var(--serif);
   font-style: italic;
   font-weight: 360;
-  font-size: 1.05rem;
-  line-height: 1.45;
-  color: var(--ink-soft);
+  font-size: 0.92rem;
+  line-height: 1.4;
+  color: var(--mute);
+}
+
+.pool-invite[hidden] {
+  display: none;
 }
 
 .pool-cue {
@@ -598,13 +606,64 @@ body {
   color: var(--mute);
 }
 
+.intake-line,
 .capture-line {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   align-items: center;
-  gap: 0.15rem 1.1rem;
+  gap: 0.05rem 0.85rem;
   margin: 0;
+}
+
+.intake-act {
+  appearance: none;
+  border: 0;
+  background: none;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.35rem 0.35rem;
+  text-align: center;
+  cursor: pointer;
+  font-family: var(--serif);
+  font-size: 0.95rem;
+  font-style: italic;
+  font-weight: 360;
+  color: var(--ink-soft);
+}
+
+.intake-act:hover,
+.intake-act:focus-visible {
+  color: var(--terracotta);
+  outline: none;
+}
+
+.samples-line {
+  margin: 0.05rem 0 0;
+}
+
+.samples-act {
+  appearance: none;
+  border: 0;
+  background: none;
+  min-height: 32px;
+  padding: 0.1rem 0.15rem 0.2rem;
+  cursor: pointer;
+  font-family: var(--serif);
+  font-size: 0.78rem;
+  font-style: italic;
+  font-weight: 360;
+  color: var(--mute);
+}
+
+.samples-act:hover,
+.samples-act:focus-visible {
+  color: var(--terracotta);
+  outline: none;
+}
+
+.samples-act[aria-pressed="false"] {
+  opacity: 0.55;
 }
 
 .capture-act {
@@ -676,41 +735,6 @@ body {
 }
 
 .capture-note::placeholder {
-  color: var(--mute);
-}
-
-.bring {
-  margin: 0.15rem 0.15rem 0;
-  text-align: center;
-}
-
-.bring-line {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.35rem 0.85rem;
-  margin: 0;
-}
-
-.bring-act {
-  appearance: none;
-  border: 0;
-  background: none;
-  padding: 0.45rem 0.1rem;
-  cursor: pointer;
-  font-family: var(--serif);
-  font-size: 0.92rem;
-  font-style: italic;
-  color: var(--ink-soft);
-}
-
-.bring-act:hover,
-.bring-act:focus-visible {
-  color: var(--terracotta);
-  outline: none;
-}
-
-.bring-act[aria-pressed="false"] {
   color: var(--mute);
 }
 
