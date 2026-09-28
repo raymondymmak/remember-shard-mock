@@ -117,7 +117,6 @@ body {
 .folio-all,
 .samples-act,
 .revise,
-.teach summary,
 .job,
 .mark-vote {
   font-family: var(--sans);
@@ -341,53 +340,79 @@ body {
   stroke: rgba(255, 248, 240, 0.92);
 }
 
+/* One quiet glass box. The title is the header of that box. */
 .teach {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
   margin: 0.15rem 0 0;
+  border-radius: 12px;
+  transition: background-color 160ms ease;
   color: var(--ink-soft);
+  background-color: rgba(255, 252, 247, 0.28);
+  border: 1px solid rgba(43, 36, 25, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(5px) saturate(1.12);
+  -webkit-backdrop-filter: blur(5px) saturate(1.12);
 }
 
 .teach > summary {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: fit-content;
-  min-height: 40px;
-  padding: 0.4rem 0.7rem;
-  border-radius: 8px;
-  font-size: 0.66rem;
+  justify-content: flex-start;
+  gap: 0.45rem;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 0.9rem;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  font-family: var(--sans);
+  font-style: normal;
+  font-weight: 500;
+  font-size: 0.68rem;
   line-height: 1;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   list-style: none;
   color: var(--ink-soft);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .teach > summary::-webkit-details-marker {
   display: none;
 }
 
-.teach > summary::before {
-  content: "›";
-  display: inline-block;
-  margin-right: 0.4em;
-  letter-spacing: 0;
-  line-height: 1;
-  transform-origin: center;
+.teach > summary::marker {
+  content: "";
 }
 
-.teach[open] > summary::before {
+.teach > summary::before {
   content: "›";
-  transform: rotate(90deg);
+  display: block;
+  flex: none;
+  width: 0.7em;
+  margin: 0;
+  font-size: 1.05em;
+  letter-spacing: 0;
+  line-height: 1;
+  text-align: center;
+  transform: translateY(-0.04em);
+  transform-origin: center;
 }
 
 .teach[open] > summary {
   color: var(--ink);
-  background-color: rgba(246, 239, 228, 0.9);
-  border-color: rgba(139, 77, 50, 0.4);
-  box-shadow: inset 0 -2px 0 var(--terracotta);
+  border-bottom: 1px solid var(--line);
+  border-radius: 12px 12px 0 0;
+}
+
+.teach[open] > summary::before {
+  transform: translateY(-0.04em) rotate(90deg);
 }
 
 .teach-factors {
@@ -419,16 +444,14 @@ body {
 }
 
 .teach-body {
-  align-self: stretch;
-  margin-top: 0.65rem;
-  padding: 0.85rem 0.8rem 0.8rem;
-  border-radius: 12px;
+  margin: 0;
+  padding: 0.85rem 0.9rem 0.9rem;
   text-align: left;
-  background-color: rgba(255, 252, 247, 0.28);
-  border: 1px solid rgba(43, 36, 25, 0.1);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
-  backdrop-filter: blur(5px) saturate(1.12);
-  -webkit-backdrop-filter: blur(5px) saturate(1.12);
+  background: none;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .teach-lede {
@@ -1069,7 +1092,7 @@ button.lens-seg:active,
 .folio-item:active,
 .samples-act:active,
 .revise:active,
-.teach summary:active,
+.teach:not([open]):active,
 .job:active {
   transform: translateY(1px);
 }
@@ -1093,6 +1116,10 @@ button.lens-seg:active,
   outline-offset: 3px;
 }
 
+.teach > summary:focus-visible {
+  outline-offset: -3px;
+}
+
 @media (hover: hover) {
   .job:hover,
   .mark-vote:hover,
@@ -1101,12 +1128,20 @@ button.lens-seg:active,
   .capture-act:hover,
   .samples-act:hover,
   .revise:hover,
-  .teach summary:hover,
   .teach-act:hover,
   .folio-step:hover,
   .folio-all:hover,
   .folio-item:hover {
     background-color: rgba(255, 252, 247, 0.72);
+    color: var(--ink);
+  }
+
+  .teach:not([open]):hover {
+    background-color: rgba(255, 252, 247, 0.46);
+  }
+
+  .teach[open] > summary:hover {
+    background-color: rgba(255, 252, 247, 0.28);
     color: var(--ink);
   }
 
@@ -1127,7 +1162,8 @@ button.lens-seg:active,
   .shard,
   .mark-vote,
   .lens,
-  .lens-seg {
+  .lens-seg,
+  .teach {
     transition: none;
   }
 
@@ -1141,7 +1177,7 @@ button.lens-seg:active,
   .folio-item:active,
   .samples-act:active,
   .revise:active,
-  .teach summary:active,
+  .teach:not([open]):active,
   .job:active {
     transform: none;
   }
@@ -1151,7 +1187,7 @@ button.lens-seg:active,
   .lens,
   .lens-seg,
   .pool-box,
-  .teach-body,
+  .teach,
   .intake-line,
   .capture-line,
   .teach-actions,
@@ -1165,7 +1201,6 @@ button.lens-seg:active,
   .mark-vote,
   .samples-act,
   .revise,
-  .teach summary,
   .receive {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
