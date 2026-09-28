@@ -1142,9 +1142,10 @@ function record(action) {
   });
 }
 
-// Like records keep; dislike records nah. A filled icon lifts that trailing
-// mark. Neither one turns the page — prev and next do that. An unmarked
-// letter is already a pass.
+// Like records keep; dislike records nah. They replace each other.
+// A second tap on the filled icon clears it to unmarked — it does not
+// bring the other mark back. Neither one turns the page — prev and next
+// do that. An unmarked letter is already a pass.
 async function onVote(action) {
   if (state.marking || state.animating || state.busy) return;
   if (action !== "keep" && action !== "nah") return;

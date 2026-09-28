@@ -44,7 +44,7 @@ No account, no backend, no Google Photos or Drive API.
 2. **Soft memory** — gentle continuity / texture
 3. **Prep for people & names** — one true thing about someone before you see them
 
-Quiet marks on the letter: **like** and **dislike** (the keep and nah marks — like fills while keep is the latest mark for this shard and job, dislike fills while nah is, and tapping a filled icon lifts that mark). Leaving a letter unmarked and turning the page with **prev** / **next** is a pass. Switching shards or jobs reads the fill from the log again.
+Quiet marks on the letter: **like** and **dislike** (the keep and nah marks). One letter has one mark for the job you are on: like, dislike, or unmarked. Like while it is disliked becomes like only, and dislike while it is liked becomes dislike only. Tapping the filled icon again clears it; that undo does not bring the other mark back. Leaving a letter unmarked and turning the page with **prev** / **next** is a pass. Switching shards or jobs reads the fill from the log again.
 
 The sample photos are Unsplash stand-ins. Sample copy is invented. Your own files never leave the browser.
 
