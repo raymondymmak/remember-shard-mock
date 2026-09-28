@@ -74,8 +74,15 @@ function formatWhen(iso) {
     year: "numeric",
   });
 
+  const sameDay =
+    then.getFullYear() === now.getFullYear() &&
+    then.getMonth() === now.getMonth() &&
+    then.getDate() === now.getDate();
+
   let age;
-  if (months < 2) age = "weeks ago";
+  if (sameDay) age = "today";
+  else if (months <= 0) age = "this month";
+  else if (months < 2) age = "weeks ago";
   else if (months < 12) age = `${months} months ago`;
   else {
     const years = Math.max(1, Math.round(months / 12));
@@ -187,10 +194,16 @@ function printMarkup(shard) {
   if (!shard.photo) {
     const wash = paperWash(shard.note || shard.id);
     const kicker = shard.hasPhoto ? "from you" : "a note";
+    const line = paperLine(shard.note);
+    const titled = String(shard.note || "").includes("\n") && line;
     return `
       <figure class="print print-paper" style="--wash: ${wash}">
         <p class="paper-kicker">${kicker}</p>
-        <p class="paper-line">${escapeHtml(paperLine(shard.note))}</p>
+        ${
+          titled
+            ? `<p class="paper-line">${escapeHtml(line)}</p>`
+            : `<p class="paper-mark" aria-hidden="true">—</p>`
+        }
       </figure>
     `;
   }
@@ -373,35 +386,36 @@ function applyShard(shard, { kept = false } = {}) {
   renderShard();
 }
 
+let flight = 0;
+
 function swapTo(shard, { kept = false } = {}) {
   if (!shard) return;
-  if (state.animating) return;
-  if (shard.id === state.shardId) {
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduce || state.animating || shard.id === state.shardId) {
+    flight += 1;
+    state.animating = false;
+    shardEl.classList.remove("is-leaving", "is-entering");
     applyShard(shard, { kept });
     return;
   }
 
-  const apply = () => applyShard(shard, { kept });
-  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (reduce) {
-    apply();
-    return;
-  }
-
+  const token = ++flight;
   state.animating = true;
   shardEl.classList.add("is-leaving");
 
   window.setTimeout(() => {
-    apply();
+    if (token !== flight) return;
+    applyShard(shard, { kept });
     shardEl.classList.remove("is-leaving");
     shardEl.classList.add("is-entering");
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
+        if (token !== flight) return;
         shardEl.classList.remove("is-entering");
       });
     });
     window.setTimeout(() => {
-      state.animating = false;
+      if (token === flight) state.animating = false;
     }, 240);
   }, 220);
 }
@@ -498,8 +512,7 @@ function showFresh(ids, summary) {
   }
   const place = ranking.findIndex((row) => row.shard.id === best.shard.id) + 1;
   setHint(`${summary} This one ranked ${ordinal(place)} of ${ranking.length}.`);
-  if (state.animating) applyShard(best.shard);
-  else swapTo(best.shard);
+  swapTo(best.shard);
 }
 
 async function intake(entries) {
