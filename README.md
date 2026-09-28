@@ -12,6 +12,8 @@ retrieve → rank → feedback. Each job is a query (a small grit / softness / p
 
 Word closeness uses a small sentence model, `Xenova/all-MiniLM-L6-v2`, through Transformers.js. It runs in the browser. The first visit may download the weights; after that they stay in the browser cache. Notes and photos are not uploaded, and there is no API key. The letter paints first and loads the model after. While it is loading — or if it cannot load — ranking uses the hashed word buckets in `embedText` instead. keep / nah still learn from the same score parts (closeness, freshness, recency, vibe, words). Only the vectors behind the word cosine change. A revised note is embedded again. A photograph also gets a small fingerprint read in the browser from the pixels themselves — brightness, warmth, and a rough histogram — compared with what that job likes in a picture: push a bit brighter and outdoor, soft warmer and dimmer, people in the middle. It nudges the score. It does not overrule the note, and keep / nah do not train it. Once `Xenova/clip-vit-base-patch32` is ready, that same image slot is a CLIP cosine between the photograph and the job’s words (one shared width, still in the browser); the fingerprint stays the fallback, and the two widths are never mixed. The letter is whoever wins — **another** takes the next unused candidate, not a shuffle. Marks land in localStorage so the next ranking, even after a reload, can move. Open **why this ranked** to see the arithmetic; it is a classroom overlay, not a product surface.
 
+The line under the note — why this helps today — is composed in the browser from the job you picked and from the note (a name, a verb, a short phrase), plus the picture when that read is ready. It is not a remote model. Ranking does not use that composed line.
+
 ## This is supervised learning
 
 keep and nah are labels: wanted / not wanted, stored with the score parts from that moment. **learn from my marks** fits a small logistic model (gradient descent, starting from the hand-written mix) that predicts P(keep) from those parts — job, freshness, recency, vibe, words. The ranking formula then uses the learned weights. **another** is ignored here; it is a skip, not a clean class. **reset to default mix** restores the prior. You can download the marks as JSON. No backend. The learned mix is a small logistic model. It does not train the sentence vectors.
@@ -28,7 +30,7 @@ Under the letter: **bring a photo or a note**, **or a folder**, or drop files on
 
 - A note binds to a photo when they share a name (`hike.jpg` + `hike.md`), including differences in case and punctuation.
 - One photo and one note dropped together, names aside, bind too.
-- A photo alone gets a short first-person placeholder you can revise, and a provisional why-line from the job you have open.
+- A photo alone gets a short first-person placeholder you can revise. The why-line still comes from the job, and from the picture once that read is ready.
 - A note alone is a letter on warm paper.
 - Several photos and one unrelated note stay separate, so a caption is not pasted onto the wrong frame.
 
@@ -69,4 +71,4 @@ npm run preview
 
 ## Iterate
 
-Shard copy and hand-authored vibe vectors live in `src/shards.js`. The scoring math lives in `src/ranker.js`. Sentence meaning lives in `src/meaning.js`; the hashed fallback stays in `embedText`. The photograph's fingerprint lives in `src/image.js`; its CLIP embedding lives in `src/vision.js`. The tiny trainer lives in `src/train.js`. Turning local files into shards lives in `src/ingest.js`; keeping them lives in `src/library.js`. Layout and type live in `src/style.css`. Keep the page a letter.
+Shard copy and hand-authored vibe vectors live in `src/shards.js`. The scoring math lives in `src/ranker.js`. The why-line under the note is composed in `src/why.js`. Sentence meaning lives in `src/meaning.js`; the hashed fallback stays in `embedText`. The photograph's fingerprint lives in `src/image.js`; its CLIP embedding lives in `src/vision.js`. The tiny trainer lives in `src/train.js`. Turning local files into shards lives in `src/ingest.js`; keeping them lives in `src/library.js`. Layout and type live in `src/style.css`. Keep the page a letter.
