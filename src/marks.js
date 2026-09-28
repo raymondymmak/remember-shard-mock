@@ -1,6 +1,7 @@
 // Like and dislike follow the latest mark for this shard and this job.
-// Like fills on "keep", dislike fills on "nah". "another" fills neither,
-// even when an earlier keep or nah still sits in the log and still scores.
+// Like fills on "keep", dislike fills on "nah". Any other latest action
+// (an older skip still in the log) fills neither, even when an earlier
+// keep or nah still sits in the log and still scores.
 
 export function latestAction(log, shardId, jobId) {
   if (!shardId || !jobId || !Array.isArray(log)) return null;

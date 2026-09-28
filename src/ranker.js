@@ -252,6 +252,8 @@ export function feedbackMarks(log, shardId, jobId) {
     if (event.shardId !== shardId || event.job !== jobId) continue;
     if (event.action === "keep") marks += 1;
     else if (event.action === "nah") marks -= 1.2;
+    // Older logs may still hold "another" (a light skip). The letter no
+    // longer records it; those marks keep their small pull.
     else if (event.action === "another") marks -= 0.25;
   }
   return marks;

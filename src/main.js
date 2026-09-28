@@ -604,6 +604,8 @@ function shownForExplain() {
   return shown;
 }
 
+// usedIds still lets ranking walk past shards already set aside. The marks
+// row no longer records a skip; prev / next browse without consuming.
 function pickCandidate({ consumeCurrent = false } = {}) {
   if (consumeCurrent && state.shardId) {
     state.usedIds.add(state.shardId);
@@ -875,7 +877,6 @@ function shardMarkup(shard) {
       <button type="button" class="mark mark-vote mark-like ${state.kept ? "is-on" : ""}" data-act="keep" aria-label="like" aria-pressed="${state.kept ? "true" : "false"}">
         ${voteIcon()}
       </button>
-      <button type="button" class="mark mark-skip" data-act="another">another</button>
       <button type="button" class="mark mark-vote mark-dislike ${state.nixed ? "is-on" : ""}" data-act="nah" aria-label="dislike" aria-pressed="${state.nixed ? "true" : "false"}">
         ${voteIcon()}
       </button>
@@ -1138,7 +1139,8 @@ function record(action) {
 }
 
 // Like records keep; dislike records nah. A filled icon lifts that trailing
-// mark. Neither one skips — "another" is still the next-unused advance.
+// mark. Neither one turns the page — prev and next do that. An unmarked
+// letter is already a pass.
 async function onVote(action) {
   if (state.marking || state.animating || state.busy) return;
   if (action !== "keep" && action !== "nah") return;
@@ -1167,21 +1169,6 @@ async function onVote(action) {
       if (!state.browsed) renderFolio();
       if (teachEl?.open) renderTeach();
     }
-  } finally {
-    state.marking = false;
-  }
-}
-
-async function onAdvance(action) {
-  if (state.marking) return;
-  state.marking = true;
-  try {
-    await finishEditing();
-    record(action);
-    resetBrowse();
-    const next = pickCandidate({ consumeCurrent: true });
-    if (next) swapTo(next.shard);
-    else showEmpty();
   } finally {
     state.marking = false;
   }
@@ -1320,7 +1307,6 @@ shardEl.addEventListener("click", (event) => {
     return;
   }
   if (act === "keep" || act === "nah") void onVote(act);
-  else if (act === "another") void onAdvance("another");
 });
 
 shardEl.addEventListener("focusout", (event) => {
