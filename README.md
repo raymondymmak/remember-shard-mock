@@ -34,7 +34,7 @@ Under the letter: **bring a photo or a note**, **or a folder**, or drop files on
 - A note alone is a letter on warm paper.
 - Several photos and one unrelated note stay separate, so a caption is not pasted onto the wrong frame.
 
-Images are kept in IndexedDB, and so are the note and photo vectors once a model has produced them. The words, the vibe guess, and the keep / nah log stay in localStorage, so a reload still has them. The vectors are not uploaded. A keyword guess sets the grit / softness / people vector (mid values when the note doesn’t lean). Revise the note and that guess moves with it. Imported letters join the same pool as the samples — data, then retrieve, then rank. **samples in** / **samples aside** leaves the demo library in the pool or steps it out. keep / nah still teach the mix.
+Images are kept in IndexedDB, and so are the note and photo vectors once a model has produced them. The words, the vibe guess, and the keep / nah log stay in localStorage, so a reload still has them. The vectors are not uploaded. A keyword guess sets the grit / softness / people vector (mid values when the note doesn’t lean). Revise the note and that guess moves with it. Imported letters join the pool — data, then retrieve, then rank. The first photo or note you keep sets the samples aside, so the letter ranks your shards; **samples in** brings the demo library back. keep / nah still teach the mix.
 
 No account, no backend, no Google Photos or Drive API.
 

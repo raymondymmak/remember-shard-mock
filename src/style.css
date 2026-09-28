@@ -578,6 +578,26 @@ body {
   text-align: center;
 }
 
+.pool-invite {
+  margin: 0.15rem auto 0.05rem;
+  max-width: 22em;
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 360;
+  font-size: 1.05rem;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+.pool-cue {
+  margin: 0.15rem auto 0;
+  font-size: 0.68rem;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  line-height: 1.45;
+  color: var(--mute);
+}
+
 .capture-line {
   display: flex;
   flex-wrap: wrap;

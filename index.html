@@ -33,6 +33,9 @@
       <section class="stage" aria-live="polite">
         <article class="shard" id="shard"></article>
         <div class="capture" id="capture">
+          <p class="pool-invite" id="pool-invite">
+            Take a photo, choose one, or drop it here. A note if you want.
+          </p>
           <!-- Separate from the library input: capture skips the iOS photo picker. -->
           <input
             id="capture-camera"
@@ -97,9 +100,8 @@
               samples in
             </button>
           </p>
-          <p class="bring-hint" id="bring-hint" role="status">
-            Take or choose a photo. Drop files on the page, too — a matching name binds the note.
-          </p>
+          <p class="pool-cue" id="pool-cue">Ranking the samples.</p>
+          <p class="bring-hint" id="bring-hint" role="status"></p>
         </div>
         <details class="teach" id="teach">
           <summary>why this ranked</summary>
