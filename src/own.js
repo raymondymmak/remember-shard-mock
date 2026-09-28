@@ -1,8 +1,9 @@
 // Once a real shard is in the library, ranking should feel like the user's.
 // Samples stay on disk; this only decides whether they are in the pool.
 
-export const EMPTY_POOL_INVITE =
-  "Take a photo, choose one, or drop it here. A note if you want.";
+// One quiet line while nothing of the user's is in the pool.
+// The controls name take / choose / files / folder; this line does not.
+export const EMPTY_POOL_INVITE = "One of yours, if you want.";
 
 export function poolFace({ ownCount = 0, includeSamples = true } = {}) {
   const own = ownCount > 0;
