@@ -497,10 +497,21 @@ body {
 }
 
 .teach-list li.is-total {
-  margin-top: 0.25rem;
-  padding-top: 0.4rem;
-  border-top: 1px solid var(--line);
+  position: relative;
+  margin-top: 0.35rem;
+  padding-top: 0.72rem;
+  border-top: 0;
   color: var(--ink);
+}
+
+.teach-list li.is-total::before {
+  content: "";
+  position: absolute;
+  top: 0.22rem;
+  left: 0;
+  width: 2.25rem;
+  height: 1px;
+  background: rgba(43, 36, 25, 0.2);
 }
 
 .teach-also li span:first-child {

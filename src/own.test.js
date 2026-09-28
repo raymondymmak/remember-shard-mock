@@ -191,5 +191,22 @@ describe("my shards", { concurrency: 1 }, () => {
     const body = css.slice(css.indexOf(".teach-body {"), css.indexOf("}", css.indexOf(".teach-body {")));
     assert.equal(body.includes("backdrop-filter: blur"), false);
     assert.match(body, /background:\s*none/);
+    const total = css.slice(
+      css.indexOf(".teach-list li.is-total {"),
+      css.indexOf("}", css.indexOf(".teach-list li.is-total {")),
+    );
+    assert.equal(total.includes("border-top: 1px solid var(--line)"), false);
+    assert.match(total, /border-top:\s*0/);
+    const totalRule = css.slice(
+      css.indexOf(".teach-list li.is-total::before {"),
+      css.indexOf("}", css.indexOf(".teach-list li.is-total::before {")),
+    );
+    assert.match(totalRule, /width:\s*2\.25rem/);
+    assert.match(totalRule, /height:\s*1px/);
+    const scores = css.slice(
+      css.indexOf(".teach-scores {"),
+      css.indexOf("}", css.indexOf(".teach-scores {")),
+    );
+    assert.match(scores, /border-top:\s*1px solid var\(--line\)/);
   });
 });
