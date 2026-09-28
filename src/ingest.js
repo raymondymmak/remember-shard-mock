@@ -257,6 +257,47 @@ export function fingerprintOf(entry) {
   return `${path}|${entry?.size || 0}|${entry?.lastModified || 0}`;
 }
 
+// One phone photo, plus a note only when the words are really there.
+// Empty notes stay on the photo-only path so the placeholder is unchanged.
+export function captureEntries({ file, note } = {}) {
+  if (!file) return [];
+  const name = file.name || "capture.jpg";
+  const photo = {
+    file,
+    name,
+    relativePath: file.webkitRelativePath || name,
+    type: file.type || "",
+    size: file.size || 0,
+    lastModified: file.lastModified || 0,
+  };
+  const body = noteBody(note);
+  if (!body) return [photo];
+
+  const base = basename(name);
+  const cut = base.lastIndexOf(".");
+  const stem = cut > 0 ? base.slice(0, cut) : base || "capture";
+  const noteName = `${stem}.txt`;
+  const directory = directoryOf(photo.relativePath);
+  const relativePath = directory ? `${directory}/${noteName}` : noteName;
+  return [
+    photo,
+    {
+      file: {
+        name: noteName,
+        type: "text/plain",
+        size: body.length,
+        lastModified: photo.lastModified,
+        text: async () => body,
+      },
+      name: noteName,
+      relativePath,
+      type: "text/plain",
+      size: body.length,
+      lastModified: photo.lastModified,
+    },
+  ];
+}
+
 export function createImportId() {
   const uuid = globalThis.crypto?.randomUUID?.();
   if (uuid) return `import-${uuid}`;

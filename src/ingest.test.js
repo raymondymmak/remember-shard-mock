@@ -4,6 +4,7 @@ import { JOBS, SHARDS } from "./shards.js";
 import { prepareJobs, prepareShards, rankShards } from "./ranker.js";
 import {
   buildImportedShards,
+  captureEntries,
   classifyEntry,
   describeIntake,
   draftNote,
@@ -204,6 +205,66 @@ describe("shards from an import", () => {
     assert.ok(push.some((row) => row.shard.id === "import-1"));
     assert.equal(pushOnly[0].shard.filename, "push-me.jpg");
     assert.ok(pushOnly[0].parts.job > pushOnly[1].parts.job);
+  });
+});
+
+describe("phone capture", () => {
+  function shot(name, extra = {}) {
+    return { name, type: "image/jpeg", size: 40, lastModified: 10, ...extra };
+  }
+
+  it("leaves an empty note on the photo-only placeholder path", () => {
+    for (const note of ["", "   \n", null]) {
+      const entries = captureEntries({ file: shot("image.jpg"), note }).map(classifyEntry);
+      const grouped = pairFiles(entries);
+      assert.equal(grouped.pairs.length, 0);
+      assert.equal(grouped.photoOnly.length, 1);
+      assert.equal(grouped.noteOnly.length, 0);
+      const [shard] = buildImportedShards(grouped, { jobId: "soft", createId: ids() });
+      assert.equal(shard.placeholder, true);
+      assert.equal(shard.note, draftNote());
+      assert.equal(shard.hasPhoto, true);
+      assert.equal(shard.noteName, "");
+    }
+  });
+
+  it("binds a written note to that photo and keeps the file for the library", async () => {
+    const file = shot("IMG_2201.JPEG", { size: 80, lastModified: 20 });
+    const entries = captureEntries({ file, note: "  I laughed with Sam at dinner. " });
+    assert.equal(entries.length, 2);
+    const body = await entries[1].file.text();
+    const grouped = pairFiles(entries.map(classifyEntry));
+    assert.equal(grouped.pairs.length, 1);
+    assert.equal(grouped.pairs[0].reason, "stem");
+    const [shard] = buildImportedShards(grouped, {
+      jobId: "people",
+      createId: ids(),
+      textFor: () => body,
+    });
+    assert.equal(shard.placeholder, false);
+    assert.equal(shard.note, "I laughed with Sam at dinner.");
+    assert.equal(shard.filename, "IMG_2201.JPEG");
+    assert.equal(shard.photoFile, file);
+    assert.equal(shard.why, whyForJob("people"));
+    assert.ok(shard.vibe[2] > shard.vibe[0]);
+  });
+
+  it("treats two phone shots that share a camera name as different letters", () => {
+    const first = buildImportedShards(
+      pairFiles(
+        captureEntries({ file: shot("image.jpg", { size: 10, lastModified: 1 }) }).map(classifyEntry),
+      ),
+      { createId: ids() },
+    );
+    const second = buildImportedShards(
+      pairFiles(
+        captureEntries({ file: shot("image.jpg", { size: 11, lastModified: 2 }) }).map(classifyEntry),
+      ),
+      { createId: () => "import-b" },
+    );
+    const actions = mergePlan(first, second);
+    assert.equal(actions.length, 1);
+    assert.equal(actions[0].type, "add");
   });
 });
 

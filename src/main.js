@@ -7,6 +7,7 @@ import * as library from "./library.js";
 import { entriesFromDataTransfer, entriesFromFileList } from "./collect.js";
 import {
   buildImportedShards,
+  captureEntries,
   classifyEntry,
   describeIntake,
   draftNote,
@@ -27,6 +28,16 @@ const hintEl = document.querySelector("#bring-hint");
 const samplesBtn = document.querySelector("#samples-toggle");
 const pickFilesEl = document.querySelector("#pick-files");
 const pickFolderEl = document.querySelector("#pick-folder");
+const captureCameraEl = document.querySelector("#capture-camera");
+const captureLibraryEl = document.querySelector("#capture-library");
+const captureDraftEl = document.querySelector("#capture-draft");
+const capturePreviewEl = document.querySelector("#capture-preview");
+const captureNoteEl = document.querySelector("#capture-note");
+
+const capture = {
+  file: null,
+  url: "",
+};
 
 let pool = [];
 let booted = false;
@@ -395,7 +406,7 @@ function renderEmpty() {
   shardEl.innerHTML = `
     <div class="empty-letter">
       <p>Nothing in the pool yet.</p>
-      <p class="empty-aside">Bring a photo or a note. It will sit here like the others.</p>
+      <p class="empty-aside">Take a photo, or bring a note. It will sit here like the others.</p>
     </div>
   `;
   renderTeach();
@@ -560,7 +571,7 @@ function showFresh(ids, summary) {
 }
 
 async function intake(entries) {
-  if (!booted || state.busy || !entries?.length) return;
+  if (!booted || state.busy || !entries?.length) return false;
   state.busy = true;
   finishEditing();
   setHint("Reading…");
@@ -600,8 +611,10 @@ async function intake(entries) {
       duplicate: result.duplicates.length,
     });
     showFresh(freshIds, summary);
+    return true;
   } catch {
     setHint("Couldn’t keep those just now.");
+    return false;
   } finally {
     state.busy = false;
   }
@@ -731,6 +744,84 @@ teachEl.addEventListener("click", (event) => {
   else if (act === "export") store.downloadLog();
   else if (act === "forget") void onForget();
 });
+
+function clearCapture() {
+  if (capture.url && typeof URL !== "undefined" && URL.revokeObjectURL) {
+    URL.revokeObjectURL(capture.url);
+  }
+  capture.file = null;
+  capture.url = "";
+  if (capturePreviewEl) capturePreviewEl.removeAttribute("src");
+  if (captureNoteEl) captureNoteEl.value = "";
+  if (captureDraftEl) captureDraftEl.hidden = true;
+}
+
+function showCaptureDraft(file) {
+  const kind = classifyEntry({
+    name: file?.name || "",
+    type: file?.type || "",
+    relativePath: file?.name || "",
+  }).kind;
+  if (kind !== "image") {
+    setHint("That isn’t a photo this page can keep.");
+    return;
+  }
+  if (capture.url && typeof URL !== "undefined" && URL.revokeObjectURL) {
+    URL.revokeObjectURL(capture.url);
+  }
+  capture.file = file;
+  try {
+    capture.url = URL.createObjectURL(file);
+  } catch {
+    capture.file = null;
+    capture.url = "";
+    setHint("Couldn’t read that photo.");
+    return;
+  }
+  if (capturePreviewEl) capturePreviewEl.src = capture.url;
+  if (captureDraftEl) {
+    captureDraftEl.hidden = false;
+    captureDraftEl.scrollIntoView({ block: "nearest" });
+  }
+}
+
+async function onCaptureKeep() {
+  if (!capture.file || state.busy || !booted) return;
+  const entries = captureEntries({
+    file: capture.file,
+    note: captureNoteEl?.value || "",
+  });
+  const kept = await intake(entries);
+  if (kept) clearCapture();
+}
+
+document.querySelector("#capture-take")?.addEventListener("click", () => {
+  if (state.busy) return;
+  captureCameraEl?.click();
+});
+
+document.querySelector("#capture-choose")?.addEventListener("click", () => {
+  if (state.busy) return;
+  captureLibraryEl?.click();
+});
+
+document.querySelector("#capture-keep")?.addEventListener("click", () => {
+  void onCaptureKeep();
+});
+
+document.querySelector("#capture-discard")?.addEventListener("click", () => {
+  if (state.busy) return;
+  clearCapture();
+});
+
+function onCaptureInput(input) {
+  const file = input?.files?.[0];
+  if (file) showCaptureDraft(file);
+  if (input) input.value = "";
+}
+
+captureCameraEl?.addEventListener("change", () => onCaptureInput(captureCameraEl));
+captureLibraryEl?.addEventListener("change", () => onCaptureInput(captureLibraryEl));
 
 document.querySelector("#bring-files")?.addEventListener("click", () => {
   pickFilesEl?.click();

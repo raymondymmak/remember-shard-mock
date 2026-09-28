@@ -31,6 +31,46 @@
 
       <section class="stage" aria-live="polite">
         <article class="shard" id="shard"></article>
+        <div class="capture" id="capture">
+          <!-- Separate from the library input: capture skips the iOS photo picker. -->
+          <input
+            id="capture-camera"
+            class="sr-only"
+            type="file"
+            accept="image/*"
+            capture="environment"
+            tabindex="-1"
+          />
+          <input
+            id="capture-library"
+            class="sr-only"
+            type="file"
+            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+            tabindex="-1"
+          />
+          <p class="capture-line">
+            <button type="button" class="capture-act" id="capture-take">take a photo</button>
+            <button type="button" class="capture-act" id="capture-choose">choose one</button>
+          </p>
+          <div class="capture-draft" id="capture-draft" hidden>
+            <figure class="capture-print">
+              <img id="capture-preview" alt="The photo you’re about to keep" />
+            </figure>
+            <label class="sr-only" for="capture-note">A note for this photo, if you want</label>
+            <textarea
+              id="capture-note"
+              class="capture-note"
+              rows="3"
+              autocomplete="off"
+              autocapitalize="sentences"
+              placeholder="A few words from that day, if you want."
+            ></textarea>
+            <p class="capture-line">
+              <button type="button" class="capture-act capture-keep" id="capture-keep">keep this</button>
+              <button type="button" class="capture-act" id="capture-discard">let it go</button>
+            </p>
+          </div>
+        </div>
         <div class="bring" id="bring">
           <input
             id="pick-files"
@@ -57,7 +97,7 @@
             </button>
           </p>
           <p class="bring-hint" id="bring-hint" role="status">
-            A matching name binds the note. Drop files on the page, or choose them.
+            Take or choose a photo. Drop files on the page, too — a matching name binds the note.
           </p>
         </div>
         <details class="teach" id="teach">
