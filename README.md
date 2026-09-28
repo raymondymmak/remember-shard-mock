@@ -18,6 +18,22 @@ keep and nah are labels: wanted / not wanted, stored with the score parts from t
 
 We hide the newest ~30% of keep/nah marks and fit only on the rest. Then we score both the default mix and the learned mix on the hidden marks (accuracy and log-loss). That holdout is the honest quiz: a mix can look clever on marks it already saw and still fail on ones it didn’t. If there aren’t enough hidden marks, we say so — we don’t invent a score. If the learned mix loses on the holdout, that’s overfitting, and we say that too.
 
+## Bring your own
+
+This is the population path, before Photos or Drive. Nothing is uploaded.
+
+Under the letter: **bring a photo or a note**, **or a folder**, or drop files on the page. Photos are jpg, png, or webp. Notes are `.md` or `.txt`.
+
+- A note binds to a photo when they share a name (`hike.jpg` + `hike.md`), including differences in case and punctuation.
+- One photo and one note dropped together, names aside, bind too.
+- A photo alone gets a short first-person placeholder you can revise, and a provisional why-line from the job you have open.
+- A note alone is a letter on warm paper.
+- Several photos and one unrelated note stay separate, so a caption is not pasted onto the wrong frame.
+
+Images are kept in IndexedDB. The words, the vibe guess, and the keep / nah log stay in localStorage, so a reload still has them. A keyword guess sets the grit / softness / people vector (mid values when the note doesn’t lean). Revise the note and that guess moves with it. Imported letters join the same pool as the samples — data, then retrieve, then rank. **samples in** / **samples aside** leaves the demo library in the pool or steps it out. keep / nah still teach the mix.
+
+No account, no backend, no Google Photos or Drive API.
+
 ## Jobs in this mock
 
 1. **Need a push** — motivation when down
@@ -26,7 +42,7 @@ We hide the newest ~30% of keep/nah marks and fit only on the rest. Then we scor
 
 Quiet marks on the letter: **keep** (boost this shard for this job), **another** (weak negative, show the next-best unused), **nah** (demote, then move on).
 
-Photos are Unsplash stand-ins (not personal photos). Copy is invented. No auth, no backend, no capture flow.
+The sample photos are Unsplash stand-ins. Sample copy is invented. Your own files never leave the browser.
 
 ## Run
 
@@ -45,4 +61,4 @@ npm run preview
 
 ## Iterate
 
-Shard copy and hand-authored vibe vectors live in `src/shards.js`. The scoring math lives in `src/ranker.js`. The tiny trainer lives in `src/train.js`. Layout and type live in `src/style.css`. Keep the page a letter.
+Shard copy and hand-authored vibe vectors live in `src/shards.js`. The scoring math lives in `src/ranker.js`. The tiny trainer lives in `src/train.js`. Turning local files into shards lives in `src/ingest.js`; keeping them lives in `src/library.js`. Layout and type live in `src/style.css`. Keep the page a letter.

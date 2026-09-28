@@ -31,12 +31,42 @@
 
       <section class="stage" aria-live="polite">
         <article class="shard" id="shard"></article>
+        <div class="bring" id="bring">
+          <input
+            id="pick-files"
+            class="sr-only"
+            type="file"
+            multiple
+            tabindex="-1"
+            accept=".jpg,.jpeg,.png,.webp,.md,.txt,.markdown,image/jpeg,image/png,image/webp,text/plain,text/markdown"
+          />
+          <input
+            id="pick-folder"
+            class="sr-only"
+            type="file"
+            multiple
+            tabindex="-1"
+            webkitdirectory
+            directory
+          />
+          <p class="bring-line">
+            <button type="button" class="bring-act" id="bring-files">bring a photo or a note</button>
+            <button type="button" class="bring-act" id="bring-folder">or a folder</button>
+            <button type="button" class="bring-act" id="samples-toggle" aria-pressed="true">
+              samples in
+            </button>
+          </p>
+          <p class="bring-hint" id="bring-hint" role="status">
+            A matching name binds the note. Drop files on the page, or choose them.
+          </p>
+        </div>
         <details class="teach" id="teach">
           <summary>why this ranked</summary>
           <div class="teach-body" id="teach-body"></div>
         </details>
       </section>
     </main>
+    <div class="receive" aria-hidden="true"><p>leave them here</p></div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
