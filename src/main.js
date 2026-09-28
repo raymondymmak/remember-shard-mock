@@ -10,6 +10,7 @@ import {
   withTextVectors,
 } from "./ranker.js";
 import { meaning } from "./meaning.js";
+import { vision } from "./vision.js";
 import { explainEval, inspectLog, learnAndEvaluate } from "./train.js";
 import * as store from "./store.js";
 import * as library from "./library.js";
@@ -52,8 +53,11 @@ const capture = {
 let pool = [];
 let booted = false;
 // Fingerprints are cheap, but we still keep them so a rebuild doesn't
-// decode the same photograph again.
+// decode the same photograph again. Vision vectors are the semantic
+// stand-in for the same photographs, keyed the same way.
 const imageFeel = new Map();
+const visionById = new Map();
+let jobVision = null;
 
 const state = {
   job: "push",
@@ -85,15 +89,27 @@ function publicUrl(path) {
   return `${base}${String(path).replace(/^\//, "")}`;
 }
 
-const MEANING_COPY = {
+const TEXT_COPY = {
   loading: "loading meaning…",
   ready: "meaning ready",
   fallback: "word match, for now",
 };
 
-function paintMeaning(status) {
+function paintStatus() {
   if (!meaningEl) return;
-  meaningEl.textContent = MEANING_COPY[status] || "";
+  const text = TEXT_COPY[meaning.status()] || "";
+  const imageStatus = vision.status();
+  let image = "";
+  if (imageStatus === "loading") {
+    const pct = vision.progress();
+    image =
+      pct == null ? "loading the photograph…" : `loading the photograph… ${Math.round(pct * 100)}%`;
+  } else if (imageStatus === "ready") {
+    image = "image ready";
+  } else if (imageStatus === "fallback") {
+    image = "photo feel, for now";
+  }
+  meaningEl.textContent = [text, image].filter(Boolean).join(" · ");
 }
 
 function rawShards() {
@@ -105,14 +121,62 @@ function rawShards() {
 let vectorGen = 0;
 let vectorFlight = Promise.resolve();
 
+function photoKey(shard) {
+  return shard.photo ? publicUrl(shard.photo) : null;
+}
+
+function rememberVision(raw, result) {
+  if (!result || result.mode !== "semantic") {
+    jobVision = null;
+    visionById.clear();
+    return;
+  }
+  jobVision = result.jobVectors;
+  visionById.clear();
+  raw.forEach((shard, i) => {
+    const vec = result.photoVectors[i];
+    if (vec) visionById.set(shard.id, vec);
+  });
+}
+
+function pullCachedVision(raw) {
+  const cached = vision.cachedJobsAndPhotos(RAW_JOBS.map(jobDocument), raw.map(photoKey));
+  if (cached) rememberVision(raw, { mode: "semantic", ...cached });
+}
+
+// Text refresh rebuilds the pool. Fingerprints and CLIP vectors are put
+// back on afterwards so one update cannot wipe the other.
+function attachSideChannels() {
+  const dim = jobVision?.[0]?.length || 0;
+  const jobsAligned =
+    dim > 0 && jobVision.length === JOBS.length && jobVision.every((vec) => vec?.length === dim);
+
+  JOBS = JOBS.map((job, i) => {
+    const next = { ...job };
+    delete next.visionVec;
+    if (jobsAligned) next.visionVec = jobVision[i];
+    return next;
+  });
+
+  pool = pool.map((shard) => {
+    const next = { ...shard };
+    delete next.imageVec;
+    delete next.visionVec;
+    const feel = imageFeel.get(shard.id);
+    if (feel) next.imageVec = feel;
+    const seen = visionById.get(shard.id);
+    if (jobsAligned && seen?.length === dim) next.visionVec = seen;
+    return next;
+  });
+}
+
 function applyVectors(mode, jobVecs, shardVecs, raw = rawShards()) {
   const projected = withTextVectors(RAW_JOBS, raw, jobVecs, shardVecs, mode);
   JOBS = projected.jobs;
-  pool = projected.shards.map((shard) => {
-    const imageVec = imageFeel.get(shard.id);
-    return imageVec ? { ...shard, imageVec } : shard;
-  });
+  pool = projected.shards;
   state.textMode = projected.mode === "semantic" ? "semantic" : "hash";
+  pullCachedVision(raw);
+  attachSideChannels();
   return state.textMode;
 }
 
@@ -161,11 +225,46 @@ function scheduleVectors() {
   return run;
 }
 
+let visionGen = 0;
+let visionFlight = Promise.resolve();
+
+async function refreshVision() {
+  const gen = ++visionGen;
+  const raw = rawShards();
+  const photos = raw.map(photoKey);
+  const result = await vision.embedJobsAndPhotos(RAW_JOBS.map(jobDocument), photos);
+  if (gen !== visionGen) return result.mode;
+  const rawNow = rawShards();
+  const same =
+    rawNow.length === raw.length &&
+    rawNow.every((shard, i) => shard.id === raw[i].id && photoKey(shard) === photos[i]);
+  if (!same) return result.mode;
+  rememberVision(rawNow, result);
+  attachSideChannels();
+  if (booted && teachEl?.open) renderTeach();
+  return result.mode;
+}
+
+function scheduleVision() {
+  const run = refreshVision().catch(() => {
+    jobVision = null;
+    visionById.clear();
+    attachSideChannels();
+    return "feel";
+  });
+  visionFlight = run;
+  return run;
+}
+
 function rebuildPool() {
   const mode = applyCachedOrHash();
   const status = meaning.status();
   if (mode !== "semantic" && (status === "ready" || status === "loading")) {
     void scheduleVectors();
+  }
+  const imageStatus = vision.status();
+  if (imageStatus === "ready" || imageStatus === "loading") {
+    void scheduleVision();
   }
 }
 
@@ -445,8 +544,11 @@ function renderTeach() {
       ${
         row.image == null
           ? ""
-          : `<li><span>how the photo feels</span><span>${fmt(row.image)}</span></li>
-             <li class="is-sub"><span>brightness ${fmt(shard.imageVec[0])}, warmth ${fmt(shard.imageVec[1])} — ${escapeHtml(job.imageHint || "")}</span></li>`
+          : row.imageMode === "semantic"
+            ? `<li><span>what the photo means</span><span>${fmt(row.image)}</span></li>
+               <li class="is-sub"><span>the picture, against this job’s words</span></li>`
+            : `<li><span>how the photo feels</span><span>${fmt(row.image)}</span></li>
+               <li class="is-sub"><span>brightness ${fmt(shard.imageVec[0])}, warmth ${fmt(shard.imageVec[1])} — ${escapeHtml(job.imageHint || "")}</span></li>`
       }
       <li><span>not shown recently</span><span>${fmt(row.parts.freshness)}</span></li>
       <li><span>how recent the day was</span><span>${fmt(row.parts.recency)}</span></li>
@@ -697,6 +799,7 @@ async function intake(entries) {
     if (meaning.status() === "ready") await vectorFlight;
     const freshIds = new Set([...result.added, ...result.updated].map((shard) => shard.id));
     await attachImageFeel(pool.filter((shard) => freshIds.has(shard.id)));
+    if (vision.status() === "ready") await visionFlight;
     const summary = describeIntake(grouped, {
       added: result.added.length,
       updated: result.updated.length,
@@ -1021,22 +1124,39 @@ async function boot() {
   } else if (first.shard.id === previewId) applyShard(first.shard);
   else swapTo(first.shard);
 
-  // The letter is up. Meaning loads after, and ranking switches when it lands.
+  // The letter is up. Meaning and the photograph load after, and ranking
+  // switches when they land — once, and only if nobody has moved on.
+  function maybeAdopt() {
+    if (!booted || state.editing || state.busy || state.kept) return;
+    if (state.usedIds.size) return;
+    // The fingerprint letter may still be fading in. Try once that settles
+    // so a fast model can still correct who is on the page.
+    if (state.animating) {
+      window.setTimeout(maybeAdopt, 80);
+      return;
+    }
+    const next = pickCandidate();
+    if (!next || next.shard.id === state.shardId) {
+      if (teachEl?.open) renderTeach();
+      return;
+    }
+    swapTo(next.shard);
+  }
+
   meaning.subscribe((status) => {
-    paintMeaning(status);
+    paintStatus();
     if (status !== "ready" && status !== "fallback") return;
     void scheduleVectors().then(() => {
-      // One quiet correction: if nobody has marked or moved on, show the
-      // letter meaning would have picked. After that, leave the page alone.
-      if (status !== "ready") return;
-      if (!booted || state.editing || state.busy || state.kept || state.animating) return;
-      if (state.usedIds.size) return;
-      const next = pickCandidate();
-      if (!next || next.shard.id === state.shardId) return;
-      swapTo(next.shard);
+      if (status === "ready") maybeAdopt();
     });
   });
+  vision.subscribe((status) => {
+    paintStatus();
+    if (status !== "ready" && status !== "fallback") return;
+    void scheduleVision().then(() => maybeAdopt());
+  });
   void meaning.load();
+  void vision.load();
 }
 
 boot();

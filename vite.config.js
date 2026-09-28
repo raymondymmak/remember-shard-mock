@@ -7,8 +7,8 @@ const base = process.env.GITHUB_PAGES === "true" ? `/${repo}/` : "/";
 
 export default defineConfig({
   base,
-  // The sentence model is fetched after first paint. Keep it out of the
-  // eager dep scan so the letter bundle does not wait on it.
+  // Sentence and photograph models are fetched after first paint. Keep the
+  // library out of the eager dep scan so the letter bundle does not wait.
   optimizeDeps: {
     exclude: ["@xenova/transformers"],
   },

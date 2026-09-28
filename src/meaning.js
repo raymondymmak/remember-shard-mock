@@ -2,6 +2,7 @@
 // The model stays in the browser. Notes are not uploaded.
 // Until it is ready — and if it never loads — callers keep the hashed embedText.
 
+import { configureTransformers } from "./onnx-env.js";
 import { embedText } from "./ranker.js";
 
 export const MODEL_ID = "Xenova/all-MiniLM-L6-v2";
@@ -46,15 +47,7 @@ function withTimeout(promise, ms) {
 // Dynamic import so the letter's first paint does not wait on this package.
 export async function defaultLoadPipeline() {
   const { pipeline, env } = await import("@xenova/transformers");
-  env.allowLocalModels = false;
-  // Cache API in the browser. Node has no `caches`, and forcing it throws.
-  if (typeof caches !== "undefined") env.useBrowserCache = true;
-  const wasm = env.backends?.onnx?.wasm;
-  // GitHub Pages is not cross-origin isolated, so the wasm runtime stays single-threaded.
-  if (wasm && typeof window !== "undefined") {
-    wasm.numThreads = 1;
-    wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/@xenova/transformers@${env.version}/dist/`;
-  }
+  configureTransformers(env);
 
   const extractor = await pipeline("feature-extraction", MODEL_ID, {
     quantized: true,

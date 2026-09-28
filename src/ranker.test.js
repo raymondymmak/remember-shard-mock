@@ -15,6 +15,7 @@ import {
   rankShards,
   shardDocument,
   withTextVectors,
+  withVisionVectors,
 } from "./ranker.js";
 
 const jobs = prepareJobs(JOBS);
@@ -296,5 +297,128 @@ describe("photo feel", () => {
     const path = softFelt.find((row) => row.shard.id === "soft-path");
     const page = softFelt.find((row) => row.shard.id === "soft-page");
     assert.ok(path.image > page.image);
+  });
+});
+
+describe("photo meaning", () => {
+  const now = Date.parse("2026-09-28T12:00:00Z");
+  const daylight = solid(214, 220, 228);
+  const lamp = solid(120, 64, 36);
+  const placeholder = "I kept this. I haven’t written what it meant yet — but I was there.";
+
+  function photoOnly(id, imageVec) {
+    return {
+      id,
+      date: "2020-06-01",
+      note: placeholder,
+      why: "A photograph, still waiting on its note.",
+      vibe: [0.5, 0.5, 0.5],
+      placeholder: true,
+      photo: `/photos/${id}.jpg`,
+      imageVec,
+    };
+  }
+
+  // grit looks like a push to CLIP and like a lamp to the fingerprint.
+  // calm is the opposite. Semantic ranking must follow CLIP.
+  const grit = photoOnly("grit", lamp);
+  const calm = photoOnly("calm", daylight);
+  const jobVecs = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ];
+  const shardVecs = [
+    [1, 0, 0],
+    [0, 1, 0],
+  ];
+
+  function ranked(mode) {
+    const projected = withVisionVectors(
+      prepareJobs(JOBS),
+      prepareShards([grit, calm]),
+      mode === "semantic" ? jobVecs : null,
+      mode === "semantic" ? shardVecs : null,
+      mode,
+    );
+    return {
+      projected,
+      onPush: rankShards({
+        shards: projected.shards,
+        job: projected.jobs.find((item) => item.id === "push"),
+        now,
+      }),
+      onSoft: rankShards({
+        shards: projected.shards,
+        job: projected.jobs.find((item) => item.id === "soft"),
+        now,
+      }),
+    };
+  }
+
+  it("prefers a visually push photo over a soft one when the notes are still placeholders", () => {
+    const { projected, onPush, onSoft } = ranked("semantic");
+    assert.equal(projected.mode, "semantic");
+    assert.equal(projected.jobs[0].visionVec.length, projected.shards[0].visionVec.length);
+    assert.equal(onPush[0].shard.id, "grit");
+    assert.equal(onSoft[0].shard.id, "calm");
+    assert.equal(onPush[0].imageMode, "semantic");
+    assert.ok(onPush[0].image > onPush[1].image);
+    assert.ok(onSoft[0].image > onSoft[1].image);
+    assert.deepEqual(Object.keys(onPush[0].parts).sort(), [
+      "feedback",
+      "freshness",
+      "image",
+      "job",
+      "recency",
+    ]);
+    const gap = onPush[0].total - onPush[1].total;
+    assert.ok(Math.abs(gap - WEIGHTS.image * (onPush[0].image - onPush[1].image)) < 1e-9);
+  });
+
+  it("keeps the fingerprint when the vision widths do not match", () => {
+    const broken = withVisionVectors(
+      prepareJobs(JOBS),
+      prepareShards([grit, calm]),
+      [[1, 0], [0, 1], [0, 0]],
+      [[1, 0, 0], [0, 1, 0]],
+      "semantic",
+    );
+    assert.equal(broken.mode, "feel");
+    assert.equal(broken.jobs[0].visionVec, undefined);
+    assert.equal(broken.shards[0].visionVec, undefined);
+    assert.deepEqual(broken.shards[0].imageVec, lamp);
+
+    const onPush = rankShards({
+      shards: broken.shards,
+      job: broken.jobs.find((item) => item.id === "push"),
+      now,
+    });
+    assert.equal(onPush[0].shard.id, "calm");
+    assert.equal(onPush[0].imageMode, "feel");
+    assert.equal(onPush[1].imageMode, "feel");
+  });
+
+  it("does not let the photograph overrule a note that already fits the job", () => {
+    const pushSeed = SHARDS.find((shard) => shard.id === "push-ridge");
+    const softSeed = SHARDS.find((shard) => shard.id === "soft-rain");
+    const projected = withVisionVectors(
+      prepareJobs(JOBS),
+      prepareShards([pushSeed, softSeed]),
+      jobVecs,
+      [
+        [0, 1, 0],
+        [1, 0, 0],
+      ],
+      "semantic",
+    );
+    const onPush = rankShards({
+      shards: projected.shards,
+      job: projected.jobs.find((item) => item.id === "push"),
+      now,
+    });
+    assert.equal(onPush[0].shard.id, "push-ridge");
+    assert.ok(onPush[0].image < onPush[1].image);
+    assert.equal(onPush[0].parts.image, onPush[0].image);
   });
 });
