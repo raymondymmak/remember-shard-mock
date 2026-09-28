@@ -4,7 +4,9 @@ const KEY = "remember.feedback.v0";
 const WEIGHTS_KEY = "remember.weights.v0";
 const LOG_CAP = 200;
 
-// Shown-recently stays in this tab so a reload can teach feedback, not freshness.
+// Last shown time per shard. Persisted so freshness still moves after a reload.
+const SHOWN_KEY = "remember.shown.v0";
+export const SHOWN_CAP = 400;
 const shownAt = new Map();
 
 function emptyLog() {
@@ -80,8 +82,67 @@ export function undoNah(shardId, job) {
   return undoTrailing(shardId, job, undoActiveNah);
 }
 
+function cappedShownEntries(pairs) {
+  const clean = [];
+  for (const [id, ts] of pairs) {
+    if (typeof id !== "string" || !id) continue;
+    if (typeof ts !== "number" || !Number.isFinite(ts)) continue;
+    clean.push([id, ts]);
+  }
+  clean.sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]));
+  return clean.length > SHOWN_CAP ? clean.slice(-SHOWN_CAP) : clean;
+}
+
+function rememberShown(entries) {
+  shownAt.clear();
+  for (const [id, ts] of entries) shownAt.set(id, ts);
+}
+
+function readShownPayload() {
+  if (!canUseStorage()) return globalThis.__rememberShown ?? null;
+  try {
+    const raw = localStorage.getItem(SHOWN_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== "object") return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+// Fill the in-memory map from storage. Call this before the first rank.
+export function loadShown() {
+  const data = readShownPayload();
+  const record =
+    data && data.v === 1 && data.shown && typeof data.shown === "object" && !Array.isArray(data.shown)
+      ? data.shown
+      : {};
+  rememberShown(cappedShownEntries(Object.entries(record)));
+  return shown();
+}
+
+export function saveShown() {
+  const entries = cappedShownEntries(shownAt.entries());
+  rememberShown(entries);
+  const payload = { v: 1, shown: Object.fromEntries(entries) };
+  if (!canUseStorage()) {
+    globalThis.__rememberShown = payload;
+    return payload;
+  }
+  try {
+    localStorage.setItem(SHOWN_KEY, JSON.stringify(payload));
+  } catch {
+    // Private mode / full storage — this tab still has the times.
+  }
+  return payload;
+}
+
 export function markShown(shardId, timestamp = Date.now()) {
+  if (typeof shardId !== "string" || !shardId) return;
+  if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) return;
   shownAt.set(shardId, timestamp);
+  saveShown();
 }
 
 export function log() {
