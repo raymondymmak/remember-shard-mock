@@ -68,7 +68,7 @@ function undoTrailing(shardId, job, strip) {
 }
 
 // Lift the keep the like icon is showing. Other marks stay, including an
-// earlier keep that a later "another" or "nah" already superseded.
+// earlier keep that a later nah, or an older skip, already superseded.
 export function undoKeep(shardId, job) {
   return undoTrailing(shardId, job, withoutLatestKeep);
 }

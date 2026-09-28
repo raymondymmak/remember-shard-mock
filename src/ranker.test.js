@@ -155,7 +155,7 @@ describe("retrieve then rank", () => {
     assert.notEqual(push[0].shard.id, soft[0].shard.id);
   });
 
-  it("another walks the next unused candidate, not a shuffle", () => {
+  it("excluding one shard walks the next unused candidate, not a shuffle", () => {
     const first = rankShards({ shards, job: job("push") });
     const second = rankShards({
       shards,

@@ -252,10 +252,10 @@ body {
 }
 
 .marks {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  display: flex;
+  justify-content: center;
   align-items: center;
-  gap: 0.35rem;
+  gap: 3.25rem;
   margin: 1.05rem 0 0.1rem;
   padding-top: 0.65rem;
   border-top: 1px solid var(--line);
@@ -287,21 +287,6 @@ body {
   height: 2.75rem;
   padding: 0;
   border-radius: 999px;
-  color: var(--ink-soft);
-}
-
-.mark-like {
-  justify-self: start;
-}
-
-.mark-dislike {
-  justify-self: end;
-}
-
-.mark-skip {
-  justify-self: center;
-  min-height: 2.75rem;
-  padding: 0.35rem 0.7rem;
   color: var(--ink-soft);
 }
 
