@@ -632,7 +632,7 @@ function renderJobs() {
     return `
       <button
         type="button"
-        class="job ${selected ? "is-on" : ""}"
+        class="job lens ${selected ? "is-on" : ""}"
         role="tab"
         aria-selected="${selected}"
         data-job="${job.id}"
@@ -675,13 +675,13 @@ function noteMarkup(shard) {
       <blockquote class="note">
         <label class="sr-only" for="note-edit">Revise this note</label>
         <textarea class="note-edit" id="note-edit" rows="5" autocomplete="off"></textarea>
-        <button type="button" class="revise" data-act="done">done</button>
+        <button type="button" class="revise lens" data-act="done">done</button>
       </blockquote>
     `;
   }
 
   const revise = shard.imported
-    ? `<button type="button" class="revise" data-act="revise">revise the note</button>`
+    ? `<button type="button" class="revise lens" data-act="revise">revise the note</button>`
     : "";
   return `
     <blockquote class="note">
@@ -795,7 +795,7 @@ function folioItem(shard, index, here) {
     <li>
       <button
         type="button"
-        class="folio-item${here ? " is-here" : ""}"
+        class="folio-item lens-seg${here ? " is-here" : ""}"
         data-shard="${escapeHtml(shard.id)}"
         ${here ? 'aria-current="true"' : ""}
       >
@@ -874,10 +874,10 @@ function shardMarkup(shard) {
     <p class="why">${escapeHtml(letterWhy(shard))}</p>
     <p class="when">${escapeHtml(formatWhen(shard.date))}${yours}</p>
     <div class="marks" role="group" aria-label="How this memory landed">
-      <button type="button" class="mark mark-vote mark-like ${state.kept ? "is-on" : ""}" data-act="keep" aria-label="like" aria-pressed="${state.kept ? "true" : "false"}">
+      <button type="button" class="mark mark-vote mark-like lens ${state.kept ? "is-on" : ""}" data-act="keep" aria-label="like" aria-pressed="${state.kept ? "true" : "false"}">
         ${voteIcon()}
       </button>
-      <button type="button" class="mark mark-vote mark-dislike ${state.nixed ? "is-on" : ""}" data-act="nah" aria-label="dislike" aria-pressed="${state.nixed ? "true" : "false"}">
+      <button type="button" class="mark mark-vote mark-dislike lens ${state.nixed ? "is-on" : ""}" data-act="nah" aria-label="dislike" aria-pressed="${state.nixed ? "true" : "false"}">
         ${voteIcon()}
       </button>
     </div>
@@ -980,12 +980,12 @@ function renderTeach() {
     ${evalMarkup(store.loadEval())}
     ${state.trainNote ? `<p class="teach-note">${escapeHtml(state.trainNote)}</p>` : ""}
     <div class="teach-actions">
-      <button type="button" class="teach-act" data-train="learn">learn from my marks</button>
-      <button type="button" class="teach-act" data-train="reset">reset to default mix</button>
-      <button type="button" class="teach-act" data-train="export">download the marks</button>
+      <button type="button" class="teach-act lens-seg" data-train="learn">learn from my marks</button>
+      <button type="button" class="teach-act lens-seg" data-train="reset">reset to default mix</button>
+      <button type="button" class="teach-act lens-seg" data-train="export">download the marks</button>
       ${
         shard.imported
-          ? `<button type="button" class="teach-act" data-train="forget">let this one go</button>`
+          ? `<button type="button" class="teach-act lens-seg" data-train="forget">let this one go</button>`
           : ""
       }
     </div>

@@ -31,26 +31,28 @@
       </nav>
 
       <nav class="folio" id="folio" aria-label="Letters in this pool" hidden>
-        <div class="folio-turn">
-          <button type="button" class="folio-step" id="folio-prev" aria-label="Previous letter">
-            prev
-          </button>
-          <p class="folio-place" id="folio-place" aria-live="polite">1 of 1</p>
-          <button type="button" class="folio-step" id="folio-next" aria-label="Next letter">
-            next
+        <div class="folio-controls lens">
+          <div class="folio-turn">
+            <button type="button" class="folio-step lens-seg" id="folio-prev" aria-label="Previous letter">
+              prev
+            </button>
+            <p class="folio-place" id="folio-place" aria-live="polite">1 of 1</p>
+            <button type="button" class="folio-step lens-seg" id="folio-next" aria-label="Next letter">
+              next
+            </button>
+          </div>
+          <button
+            type="button"
+            class="folio-all lens-seg"
+            id="folio-all"
+            aria-expanded="false"
+            aria-controls="folio-drawer"
+          >
+            all shards
           </button>
         </div>
         <p class="folio-rank" id="folio-rank"></p>
-        <button
-          type="button"
-          class="folio-all"
-          id="folio-all"
-          aria-expanded="false"
-          aria-controls="folio-drawer"
-        >
-          all shards
-        </button>
-        <div class="folio-drawer" id="folio-drawer" hidden>
+        <div class="folio-drawer lens" id="folio-drawer" hidden>
           <p class="folio-kicker">ranked for this job</p>
           <ol class="folio-list" id="folio-list"></ol>
         </div>
@@ -94,12 +96,12 @@
             directory
           />
           <p class="intake-line">
-            <button type="button" class="intake-act" id="capture-take">take a photo</button>
-            <button type="button" class="intake-act" id="capture-choose">choose one</button>
-            <button type="button" class="intake-act" id="bring-files" aria-label="Choose photos or notes">
+            <button type="button" class="intake-act lens-seg" id="capture-take">take a photo</button>
+            <button type="button" class="intake-act lens-seg" id="capture-choose">choose one</button>
+            <button type="button" class="intake-act lens-seg" id="bring-files" aria-label="Choose photos or notes">
               files
             </button>
-            <button type="button" class="intake-act" id="bring-folder" aria-label="Choose a folder">
+            <button type="button" class="intake-act lens-seg" id="bring-folder" aria-label="Choose a folder">
               folder
             </button>
           </p>
@@ -116,13 +118,13 @@
               autocapitalize="sentences"
               placeholder="A few words from that day, if you want."
             ></textarea>
-            <p class="capture-line">
-              <button type="button" class="capture-act capture-keep" id="capture-keep">keep this</button>
-              <button type="button" class="capture-act" id="capture-discard">let it go</button>
+            <p class="capture-line lens">
+              <button type="button" class="capture-act capture-keep lens-seg" id="capture-keep">keep this</button>
+              <button type="button" class="capture-act lens-seg" id="capture-discard">let it go</button>
             </p>
           </div>
           <p class="samples-line">
-            <button type="button" class="samples-act" id="samples-toggle" aria-pressed="true">
+            <button type="button" class="samples-act lens" id="samples-toggle" aria-pressed="true">
               samples in
             </button>
           </p>
@@ -130,7 +132,7 @@
           <p class="bring-hint" id="bring-hint" role="status"></p>
         </div>
         <details class="teach" id="teach">
-          <summary>why this ranked</summary>
+          <summary class="lens">why this ranked</summary>
           <div class="teach-body" id="teach-body"></div>
         </details>
       </section>
