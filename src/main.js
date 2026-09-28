@@ -31,7 +31,7 @@ import {
 } from "./ingest.js";
 import { composeWhy } from "./why.js";
 import { poolFace } from "./own.js";
-import { isKept } from "./marks.js";
+import { isKept, isNixed } from "./marks.js";
 import { rankPlace, stepRank } from "./browse.js";
 
 let JOBS = prepareJobs(RAW_JOBS);
@@ -84,8 +84,9 @@ const state = {
   ranking: [],
   animating: false,
   kept: false,
-  // True only after keep on the letter now showing, so a loading model
-  // does not swap it away. The button itself is read from the log.
+  nixed: false,
+  // True after like or dislike on the letter now showing, so a loading model
+  // does not swap it away. The icons themselves are read from the log.
   held: false,
   // True once prev / next / all shards has left the retrieved letter.
   // The ranked order stays put until the next retrieve.
@@ -728,9 +729,11 @@ function currentPlacement() {
   return placement.letter ? placement : null;
 }
 
-function syncKept() {
-  state.kept = Boolean(state.shardId && isKept(store.log(), state.shardId, state.job));
-  return state.kept;
+function syncMarks() {
+  const log = store.log();
+  state.kept = Boolean(state.shardId && isKept(log, state.shardId, state.job));
+  state.nixed = Boolean(state.shardId && isNixed(log, state.shardId, state.job));
+  return { like: state.kept, dislike: state.nixed };
 }
 
 function resetBrowse() {
@@ -758,12 +761,23 @@ function folioShards() {
     .filter(Boolean);
 }
 
-function paintKeepButton() {
-  const button = shardEl.querySelector('[data-act="keep"]');
+function voteIcon() {
+  return `<svg class="mark-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path class="mark-icon-body" d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/>
+    <path class="mark-icon-cuff" d="M7 10v12"/>
+  </svg>`;
+}
+
+function paintVote(action, on) {
+  const button = shardEl.querySelector(`[data-act="${action}"]`);
   if (!button) return;
-  button.classList.toggle("is-kept", state.kept);
-  button.textContent = state.kept ? "kept" : "keep";
-  button.setAttribute("aria-pressed", state.kept ? "true" : "false");
+  button.classList.toggle("is-on", on);
+  button.setAttribute("aria-pressed", on ? "true" : "false");
+}
+
+function paintMarks() {
+  paintVote("keep", state.kept);
+  paintVote("nah", state.nixed);
 }
 
 function folioThumb(shard) {
@@ -858,11 +872,13 @@ function shardMarkup(shard) {
     <p class="why">${escapeHtml(letterWhy(shard))}</p>
     <p class="when">${escapeHtml(formatWhen(shard.date))}${yours}</p>
     <div class="marks" role="group" aria-label="How this memory landed">
-      <button type="button" class="mark ${state.kept ? "is-kept" : ""}" data-act="keep" aria-pressed="${state.kept ? "true" : "false"}">
-        ${state.kept ? "kept" : "keep"}
+      <button type="button" class="mark mark-vote mark-like ${state.kept ? "is-on" : ""}" data-act="keep" aria-label="like" aria-pressed="${state.kept ? "true" : "false"}">
+        ${voteIcon()}
       </button>
-      <button type="button" class="mark" data-act="another">another</button>
-      <button type="button" class="mark" data-act="nah">nah</button>
+      <button type="button" class="mark mark-skip" data-act="another">another</button>
+      <button type="button" class="mark mark-vote mark-dislike ${state.nixed ? "is-on" : ""}" data-act="nah" aria-label="dislike" aria-pressed="${state.nixed ? "true" : "false"}">
+        ${voteIcon()}
+      </button>
     </div>
   `;
 }
@@ -992,7 +1008,7 @@ function renderShard() {
     renderEmpty();
     return;
   }
-  syncKept();
+  syncMarks();
   shardEl.innerHTML = shardMarkup(shard);
   if (state.editing) focusEditor(shard);
   renderTeach();
@@ -1002,6 +1018,7 @@ function renderShard() {
 function showEmpty() {
   state.shardId = null;
   state.kept = false;
+  state.nixed = false;
   state.held = false;
   state.editing = false;
   resetBrowse();
@@ -1120,8 +1137,11 @@ function record(action) {
   });
 }
 
-async function onKeep() {
+// Like records keep; dislike records nah. A filled icon lifts that trailing
+// mark. Neither one skips — "another" is still the next-unused advance.
+async function onVote(action) {
   if (state.marking || state.animating || state.busy) return;
+  if (action !== "keep" && action !== "nah") return;
   const shardId = state.shardId;
   const jobId = state.job;
   if (!shardId) return;
@@ -1130,17 +1150,20 @@ async function onKeep() {
   try {
     await finishEditing();
     if (state.shardId !== shardId || state.job !== jobId) return;
-    if (isKept(store.log(), shardId, jobId)) {
-      store.undoKeep(shardId, jobId);
+    const log = store.log();
+    const filled = action === "keep" ? isKept(log, shardId, jobId) : isNixed(log, shardId, jobId);
+    if (filled) {
+      if (action === "keep") store.undoKeep(shardId, jobId);
+      else store.undoNah(shardId, jobId);
       state.held = false;
     } else {
-      record("keep");
+      record(action);
       state.held = true;
     }
-    syncKept();
+    syncMarks();
     if (wasEditing) renderShard();
     else {
-      paintKeepButton();
+      paintMarks();
       if (!state.browsed) renderFolio();
       if (teachEl?.open) renderTeach();
     }
@@ -1296,9 +1319,8 @@ shardEl.addEventListener("click", (event) => {
     })();
     return;
   }
-  if (act === "keep") void onKeep();
+  if (act === "keep" || act === "nah") void onVote(act);
   else if (act === "another") void onAdvance("another");
-  else if (act === "nah") void onAdvance("nah");
 });
 
 shardEl.addEventListener("focusout", (event) => {
@@ -1590,7 +1612,7 @@ function paintPreview() {
   state.held = false;
   state.editing = false;
   resetBrowse();
-  syncKept();
+  syncMarks();
   renderJobs();
   shardEl.innerHTML = shardMarkup(preview.shard);
   renderTeach();

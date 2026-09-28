@@ -16,7 +16,7 @@ The line under the note — why this helps today — is composed in the browser 
 
 ## This is supervised learning
 
-keep and nah are labels: wanted / not wanted, stored with the score parts from that moment. **learn from my marks** fits a small logistic model (gradient descent, starting from the hand-written mix) that predicts P(keep) from those parts — job, freshness, recency, vibe, words. The ranking formula then uses the learned weights. **another** is ignored here; it is a skip, not a clean class. **reset to default mix** restores the prior. You can download the marks as JSON. No backend. The learned mix is a small logistic model. It does not train the sentence vectors.
+Like and dislike on the letter are the keep and nah marks. keep and nah are labels: wanted / not wanted, stored with the score parts from that moment. **learn from my marks** fits a small logistic model (gradient descent, starting from the hand-written mix) that predicts P(keep) from those parts — job, freshness, recency, vibe, words. The ranking formula then uses the learned weights. **another** is ignored here; it is a skip, not a clean class. **reset to default mix** restores the prior. You can download the marks as JSON. No backend. The learned mix is a small logistic model. It does not train the sentence vectors.
 
 ## Train vs test
 
@@ -44,7 +44,7 @@ No account, no backend, no Google Photos or Drive API.
 2. **Soft memory** — gentle continuity / texture
 3. **Prep for people & names** — one true thing about someone before you see them
 
-Quiet marks on the letter: **keep** (boost this shard for this job; the button reads **kept** while that is the latest mark, and tapping it again lifts that keep), **another** (weak negative, show the next-best unused), **nah** (demote, then move on). Switching shards or jobs reads the button from the log again.
+Quiet marks on the letter: **like** and **dislike** (the keep and nah marks — like fills while keep is the latest mark for this shard and job, dislike fills while nah is, and tapping a filled icon lifts that mark), and **another** (a light skip: weak negative, show the next unused). Switching shards or jobs reads the fill from the log again.
 
 The sample photos are Unsplash stand-ins. Sample copy is invented. Your own files never leave the browser.
 
