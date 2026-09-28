@@ -13,6 +13,9 @@ import { configureTransformers } from "./onnx-env.js";
 
 export const MODEL_ID = "Xenova/clip-vit-base-patch32";
 
+// Written next to a stored vector. A different id must not reuse these numbers.
+export const CACHE_MODEL = "clip-vit-base-patch32";
+
 // Vision weights are larger than the sentence model. A stuck download should
 // still give the letter back its fingerprint instead of spinning forever.
 const DEFAULT_TIMEOUT_MS = 180_000;
@@ -251,10 +254,15 @@ export function createVision({ loadPipeline = defaultLoadPipeline, timeoutMs = 0
     }
   }
 
+  function vectorWidth() {
+    return status === "ready" ? width : 0;
+  }
+
   return {
     load,
     embedJobsAndPhotos,
     cachedJobsAndPhotos,
+    vectorWidth,
     subscribe,
     status: () => status,
     progress: () => progress,

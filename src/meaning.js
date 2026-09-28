@@ -7,6 +7,9 @@ import { embedText } from "./ranker.js";
 
 export const MODEL_ID = "Xenova/all-MiniLM-L6-v2";
 
+// Written next to a stored vector. A different id must not reuse these numbers.
+export const CACHE_MODEL = "minilm-l6-v2";
+
 // A slow or stuck download should not leave the status on "loading" forever.
 // The letter has already been ranking with the hash the whole time.
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -133,6 +136,14 @@ export function createMeaning({
     return promise;
   }
 
+  function vectorWidth() {
+    if (status !== "ready") return 0;
+    for (const vec of cache.values()) {
+      if (vec?.length) return vec.length;
+    }
+    return 0;
+  }
+
   function cachedDocuments(texts) {
     if (status !== "ready") return null;
     const keys = texts.map((text) => String(text ?? ""));
@@ -141,6 +152,22 @@ export function createMeaning({
     const dim = vectors[0]?.length;
     if (!dim || vectors.some((vec) => vec.length !== dim)) return null;
     return vectors;
+  }
+
+  // A vector already computed for this model (often read back from this device)
+  // can fill the session cache. Wrong widths are refused.
+  function rememberDocuments(entries) {
+    const dim = vectorWidth();
+    if (!dim || !entries?.length) return false;
+    const next = [];
+    for (const entry of entries) {
+      const key = String(entry?.text ?? "");
+      const source = entry?.vector;
+      if (!source || source.length !== dim) return false;
+      next.push([key, Array.from(source)]);
+    }
+    for (const [key, vec] of next) cache.set(key, vec);
+    return true;
   }
 
   async function embedDocuments(texts) {
@@ -176,6 +203,8 @@ export function createMeaning({
     load,
     embedDocuments,
     cachedDocuments,
+    rememberDocuments,
+    vectorWidth,
     subscribe,
     status: () => status,
   };
