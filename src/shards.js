@@ -5,6 +5,12 @@ export const JOBS = [
     hint: "motivation when down",
     // Hand-authored 3D vibe: [grit, softness, people]. Teaching layer, not magic.
     vibe: [0.96, 0.14, 0.08],
+    // What the photograph should feel like. Same 6 numbers as a fingerprint
+    // in src/image.js: brightness, warmth, then four brightness bins (dark → bright).
+    // Push likes daylight — a bit brighter, outdoor, not a warm lamp.
+    // The picture is measured from its pixels on load. This prior is not.
+    imagePrior: [0.68, 0.46, 0.06, 0.16, 0.36, 0.42],
+    imageHint: "this job likes brighter, outdoor light",
     query:
       "I need a push. The day feels heavy. Remind me I can keep going, get out the door, finish the next small thing.",
   },
@@ -13,6 +19,9 @@ export const JOBS = [
     label: "Soft memory",
     hint: "gentle continuity",
     vibe: [0.1, 0.96, 0.12],
+    // Soft likes a lamp more than noon: warmer, and a little dimmer.
+    imagePrior: [0.36, 0.74, 0.32, 0.4, 0.2, 0.08],
+    imageHint: "this job likes warmer, dimmer light",
     query:
       "I want a soft memory. Something gentle and ordinary. Quiet light, rain, a walk, the feeling of a good small life.",
   },
@@ -21,6 +30,9 @@ export const JOBS = [
     label: "Prep for people & names",
     hint: "before you walk in",
     vibe: [0.08, 0.28, 0.96],
+    // People sit in the middle: a room, not a noon ridge and not a night window.
+    imagePrior: [0.52, 0.55, 0.14, 0.34, 0.34, 0.18],
+    imageHint: "this job likes a middle light",
     query:
       "I'm about to see people. Help me remember names, what they care about, how they laugh, one true thing before I walk in.",
   },

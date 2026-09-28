@@ -1,3 +1,5 @@
+import { imageSimilarity } from "./image.js";
+
 // Tiny retrieve → rank loop. Not a neural net.
 // We score every shard for the current job, then the letter is whoever wins.
 
@@ -6,6 +8,9 @@ export const EMBED_DIM = 48;
 // How the final score is mixed. Job closeness does most of the work.
 // vibe / text start at 0 — they already live inside `job`. Training may
 // give them their own voice later.
+// image is a light, fixed nudge from the photograph (see src/image.js).
+// It is not in MIX_KEYS, so keep / nah do not train it. A sunny frame can
+// move the score a little. It cannot drown the note.
 export const WEIGHTS = {
   job: 0.58,
   freshness: 0.14,
@@ -13,6 +18,7 @@ export const WEIGHTS = {
   vibe: 0,
   text: 0,
   feedback: 0.2,
+  image: 0.08,
 };
 
 export const MIX_KEYS = ["job", "freshness", "recency", "vibe", "text"];
@@ -164,18 +170,22 @@ export function explainShard(shard, { job, now, shown, log, weights = WEIGHTS })
   const freshness = freshnessScore(shown[shard.id], now);
   const recency = recencyScore(shard.date, now);
   const feedback = feedbackScore(log, shard.id, job.id);
+  // null when this shard has no picture yet (a note on paper, or the
+  // thumbnail has not been read). That contributes 0 — we don't punish it.
+  const image = imageSimilarity(shard.imageVec, job.imagePrior);
   const w = mixWeights(weights);
 
-  const parts = { job: jobSim, freshness, recency, feedback };
+  const parts = { job: jobSim, freshness, recency, feedback, image };
   const total =
     w.job * parts.job +
     w.freshness * parts.freshness +
     w.recency * parts.recency +
     w.vibe * vibe +
     w.text * text +
-    w.feedback * parts.feedback;
+    w.feedback * parts.feedback +
+    (w.image || 0) * (image ?? 0);
 
-  return { total, parts, vibe, text };
+  return { total, parts, vibe, text, image };
 }
 
 export function rankShards({

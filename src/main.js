@@ -1,4 +1,5 @@
 import { JOBS as RAW_JOBS, SHARDS as RAW_SHARDS } from "./shards.js";
+import { fingerprintImage } from "./image.js";
 import { MIX_KEYS, WEIGHTS, prepareJobs, prepareShards, rankShards } from "./ranker.js";
 import { explainEval, inspectLog, learnAndEvaluate } from "./train.js";
 import * as store from "./store.js";
@@ -29,6 +30,9 @@ const pickFolderEl = document.querySelector("#pick-folder");
 
 let pool = [];
 let booted = false;
+// Fingerprints are cheap, but we still keep them so a rebuild doesn't
+// decode the same photograph again.
+const imageFeel = new Map();
 
 const state = {
   job: "push",
@@ -50,10 +54,43 @@ function currentShard() {
   return pool.find((shard) => shard.id === state.shardId);
 }
 
+function publicUrl(path) {
+  if (!path) return "";
+  // blob: and data: already point at the bytes. Sample photos are site-relative
+  // and need the Pages base (/remember-shard-mock/ in production, / locally).
+  if (/^[a-z][a-z0-9+.-]*:/i.test(path)) return path;
+  const base = import.meta.env.BASE_URL || "/";
+  return `${base}${String(path).replace(/^\//, "")}`;
+}
+
 function rebuildPool() {
   const imported = library.list();
   const samples = library.includeSamplesOn() ? RAW_SHARDS : [];
-  pool = prepareShards([...samples, ...imported]);
+  pool = prepareShards([...samples, ...imported]).map((shard) => {
+    const imageVec = imageFeel.get(shard.id);
+    return imageVec ? { ...shard, imageVec } : shard;
+  });
+}
+
+async function attachImageFeel(shards) {
+  await Promise.all(
+    shards.map(async (shard) => {
+      if (!shard.photo) return;
+      const cached = imageFeel.get(shard.id);
+      if (cached) {
+        shard.imageVec = cached;
+        return;
+      }
+      try {
+        const vec = await fingerprintImage(publicUrl(shard.photo));
+        if (!vec) return;
+        imageFeel.set(shard.id, vec);
+        shard.imageVec = vec;
+      } catch {
+        // Words still rank. A picture we can't read simply has no image term.
+      }
+    }),
+  );
 }
 
 function escapeHtml(value) {
@@ -210,7 +247,7 @@ function printMarkup(shard) {
 
   return `
     <figure class="print">
-      <img src="${escapeHtml(shard.photo)}" alt="${escapeHtml(shard.photoAlt || "")}" />
+      <img src="${escapeHtml(publicUrl(shard.photo))}" alt="${escapeHtml(shard.photoAlt || "")}" />
     </figure>
   `;
 }
@@ -306,6 +343,12 @@ function renderTeach() {
       <li><span>closeness to the job</span><span>${fmt(row.parts.job)}</span></li>
       <li class="is-sub"><span>vibe cosine — grit / softness / people</span><span>${fmt(row.vibe)}</span></li>
       <li class="is-sub"><span>words in the note</span><span>${fmt(row.text)}</span></li>
+      ${
+        row.image == null
+          ? ""
+          : `<li><span>how the photo feels</span><span>${fmt(row.image)}</span></li>
+             <li class="is-sub"><span>brightness ${fmt(shard.imageVec[0])}, warmth ${fmt(shard.imageVec[1])} — ${escapeHtml(job.imageHint || "")}</span></li>`
+      }
       <li><span>not shown recently</span><span>${fmt(row.parts.freshness)}</span></li>
       <li><span>how recent the day was</span><span>${fmt(row.parts.recency)}</span></li>
       <li><span>your keep / nah marks</span><span>${fmt(row.parts.feedback)}</span></li>
@@ -478,6 +521,7 @@ function record(action) {
           feedback: row.parts.feedback,
           vibe: row.vibe,
           text: row.text,
+          image: row.image,
         }
       : {},
   });
@@ -548,12 +592,13 @@ async function intake(entries) {
     }
     const result = await library.rememberShards(drafts, blobs);
     rebuildPool();
+    const freshIds = new Set([...result.added, ...result.updated].map((shard) => shard.id));
+    await attachImageFeel(pool.filter((shard) => freshIds.has(shard.id)));
     const summary = describeIntake(grouped, {
       added: result.added.length,
       updated: result.updated.length,
       duplicate: result.duplicates.length,
     });
-    const freshIds = new Set([...result.added, ...result.updated].map((shard) => shard.id));
     showFresh(freshIds, summary);
   } catch {
     setHint("Couldn’t keep those just now.");
@@ -772,6 +817,7 @@ async function boot() {
   }
   rebuildPool();
   syncSamplesToggle();
+  await attachImageFeel(pool);
   booted = true;
   const yours = library.list().length;
   if (yours === 1) setHint("One letter of yours is already in the pool.");
