@@ -30,6 +30,31 @@
         <div class="jobs-row" role="tablist" id="jobs"></div>
       </nav>
 
+      <nav class="folio" id="folio" aria-label="Letters in this pool" hidden>
+        <div class="folio-turn">
+          <button type="button" class="folio-step" id="folio-prev" aria-label="Previous letter">
+            prev
+          </button>
+          <p class="folio-place" id="folio-place" aria-live="polite">1 of 1</p>
+          <button type="button" class="folio-step" id="folio-next" aria-label="Next letter">
+            next
+          </button>
+        </div>
+        <button
+          type="button"
+          class="folio-all"
+          id="folio-all"
+          aria-expanded="false"
+          aria-controls="folio-drawer"
+        >
+          all shards
+        </button>
+        <div class="folio-drawer" id="folio-drawer" hidden>
+          <p class="folio-kicker">ranked for this job</p>
+          <ol class="folio-list" id="folio-list"></ol>
+        </div>
+      </nav>
+
       <section class="stage" aria-live="polite">
         <article class="shard" id="shard"></article>
         <div class="capture" id="capture">
