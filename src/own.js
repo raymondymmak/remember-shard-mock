@@ -5,14 +5,14 @@
 // The controls name take / choose / files / folder; this line does not.
 export const EMPTY_POOL_INVITE = "One of yours, if you want.";
 
-export function poolFace({ ownCount = 0, includeSamples = true } = {}) {
+export function poolFace({ ownCount = 0, includeSamples = true, drafting = false } = {}) {
   const own = ownCount > 0;
   let cue = "Ranking my shards.";
   if (includeSamples) {
     cue = own ? "Ranking the samples with yours." : "Ranking the samples.";
   }
   return {
-    invite: own ? "" : EMPTY_POOL_INVITE,
+    invite: own || drafting ? "" : EMPTY_POOL_INVITE,
     cue,
   };
 }

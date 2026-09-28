@@ -131,6 +131,8 @@ describe("my shards", { concurrency: 1 }, () => {
     assert.equal(empty.cue, "Ranking the samples.");
     assert.equal(mine.invite, "");
     assert.equal(mine.cue, "Ranking my shards.");
+    assert.equal(poolFace({ ownCount: 0, drafting: true }).invite, "");
+    assert.equal(poolFace({ ownCount: 0, drafting: true }).cue, "Ranking the samples.");
     assert.equal(mixed.invite, "");
     assert.equal(mixed.cue, "Ranking the samples with yours.");
     assert.ok(html.includes('id="pool-invite"'));

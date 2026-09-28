@@ -620,8 +620,10 @@ body {
   appearance: none;
   border: 0;
   background: none;
+  min-width: 44px;
   min-height: 44px;
-  padding: 0.35rem 0.05rem;
+  padding: 0.35rem 0.35rem;
+  text-align: center;
   cursor: pointer;
   font-family: var(--serif);
   font-size: 0.95rem;
