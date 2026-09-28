@@ -1612,6 +1612,8 @@ function paintPreview() {
 }
 
 async function boot() {
+  // Freshness reads these times. They have to be back before the first rank.
+  store.loadShown();
   const previewId = paintPreview();
   try {
     await library.hydrate();
