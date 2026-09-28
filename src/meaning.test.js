@@ -19,6 +19,7 @@ function loader(embed = toyMeaning) {
 describe("meaning fallback", () => {
   it("does not load the real model just by being imported", () => {
     assert.equal(meaning.status(), "idle");
+    assert.equal(meaning.vectorWidth(), 0);
   });
 
   it("uses the hash until load, and again if the model cannot start", async () => {
@@ -91,6 +92,26 @@ describe("meaning model", () => {
     assert.equal(seen.filter((text) => text === same).length, 1);
     assert.ok(session.cachedDocuments([same, "Rain on a quiet sunday window"]));
     assert.equal(session.cachedDocuments(["a note we have not embedded"]), null);
+    assert.equal(session.vectorWidth(), a.vectors[0].length);
+  });
+
+  it("keeps a primed vector so a later pass does not encode it again", async () => {
+    let calls = 0;
+    const session = createMeaning({
+      loadPipeline: loader(() => {
+        calls += 1;
+        return [1, 0, 0];
+      }),
+    });
+    await session.load();
+    const before = calls;
+    assert.equal(session.vectorWidth(), 3);
+    assert.equal(session.rememberDocuments([{ text: "a saved note", vector: [0, 1, 0] }]), true);
+    const again = await session.embedDocuments(["a saved note"]);
+    assert.equal(calls, before);
+    assert.equal(again.mode, "semantic");
+    assert.deepEqual(again.vectors[0], [0, 1, 0]);
+    assert.equal(session.rememberDocuments([{ text: "wrong width", vector: [1, 0] }]), false);
   });
 
   it("drops back to the hash if a later embed fails", async () => {

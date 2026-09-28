@@ -17,6 +17,7 @@ function loader({ embedText = toy, embedImage = toy } = {}) {
 describe("vision fallback", () => {
   it("does not load the real model just by being imported", () => {
     assert.equal(vision.status(), "idle");
+    assert.equal(vision.vectorWidth(), 0);
   });
 
   it("stays on photo feel until load, and again if the model cannot start", async () => {
@@ -78,6 +79,7 @@ describe("vision model", () => {
     );
 
     assert.equal(matched.mode, "semantic");
+    assert.equal(session.vectorWidth(), matched.jobVectors[0].length);
     assert.equal(matched.jobVectors[0].length, matched.photoVectors[0].length);
     assert.notEqual(matched.jobVectors[0].length, EMBED_DIM);
     assert.equal(matched.photoVectors[1], null);

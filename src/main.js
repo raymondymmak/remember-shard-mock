@@ -10,8 +10,9 @@ import {
   shardDocument,
   withTextVectors,
 } from "./ranker.js";
-import { meaning } from "./meaning.js";
-import { vision } from "./vision.js";
+import { CACHE_MODEL as NOTE_MODEL, meaning } from "./meaning.js";
+import { CACHE_MODEL as IMAGE_MODEL, vision } from "./vision.js";
+import { embedCache, photoFingerprintOf, textFingerprint } from "./embed-cache.js";
 import { explainEval, inspectLog, learnAndEvaluate } from "./train.js";
 import * as store from "./store.js";
 import * as library from "./library.js";
@@ -60,6 +61,8 @@ let booted = false;
 const imageFeel = new Map();
 const visionById = new Map();
 let jobVision = null;
+const photoPrints = new Map();
+let vectorNote = "";
 
 const state = {
   job: "push",
@@ -196,24 +199,119 @@ function applyCachedOrHash() {
   );
 }
 
+function noteVectorStats(stats, ms) {
+  const line = `${stats.hits} reused, ${stats.encoded} encoded, ${Math.round(ms)}ms`;
+  console.info(`[remember] text: ${line}`);
+  return line;
+}
+
+function imageVectorStats(stats, ms) {
+  const line = `${stats.hits} reused, ${stats.encoded} encoded, ${Math.round(ms)}ms`;
+  console.info(`[remember] photos: ${line}`);
+  return line;
+}
+
+const vectorTiming = { text: "", photos: "" };
+
+function publishVectorTiming(kind, line) {
+  vectorTiming[kind] = line ? `${kind} ${line}` : "";
+  const both = [vectorTiming.text, vectorTiming.photos].filter(Boolean).join(" · ");
+  vectorNote = both ? `On this device — ${both}.` : "";
+}
+
+async function photoFingerprint(shard) {
+  if (!shard?.photo && !shard?.hasPhoto) return "";
+  const memoKey = `${shard.id}:${shard.fingerprint || shard.photo || ""}`;
+  if (photoPrints.has(memoKey)) return photoPrints.get(memoKey);
+  const print = await photoFingerprintOf(shard, {
+    readBlob: shard.imported && shard.hasPhoto ? (id) => library.readPhoto(id) : null,
+    fetchBytes: async (url) => {
+      const response = await fetch(publicUrl(url));
+      if (!response.ok) return null;
+      return new Uint8Array(await response.arrayBuffer());
+    },
+  });
+  if (print) photoPrints.set(memoKey, print);
+  return print;
+}
+
+function noteItems(jobDocs, shardDocs, raw, dim) {
+  return [
+    ...RAW_JOBS.map((job, i) => ({
+      kind: "job",
+      id: job.id,
+      model: NOTE_MODEL,
+      fingerprint: textFingerprint(jobDocs[i]),
+      dim,
+      text: jobDocs[i],
+    })),
+    ...raw.map((shard, i) => ({
+      kind: "note",
+      id: shard.id,
+      model: NOTE_MODEL,
+      fingerprint: textFingerprint(shardDocs[i]),
+      dim,
+      text: shardDocs[i],
+    })),
+  ];
+}
+
 async function refreshVectors() {
   const gen = ++vectorGen;
   const raw = rawShards();
   const jobDocs = RAW_JOBS.map(jobDocument);
   const shardDocs = raw.map(shardDocument);
-  const result = await meaning.embedDocuments([...jobDocs, ...shardDocs]);
-  if (gen !== vectorGen) return result.mode;
+  const started = performance.now();
+
+  if (meaning.status() === "loading") await meaning.load();
+
+  const ready = meaning.status() === "ready" && meaning.vectorWidth() > 0;
+  let mode = "hash";
+  let jobVecs = null;
+  let shardVecs = null;
+  let stats = { hits: 0, encoded: 0 };
+
+  if (ready) {
+    const dim = meaning.vectorWidth();
+    const items = noteItems(jobDocs, shardDocs, raw, dim);
+    const resolved = await embedCache.resolve(items, async (missing) => {
+      const embedded = await meaning.embedDocuments(missing.map((item) => item.text));
+      if (embedded.mode !== "semantic") return { ok: false };
+      return { ok: true, vectors: embedded.vectors };
+    });
+    stats = resolved;
+    const aligned =
+      !resolved.failed &&
+      resolved.vectors.length === items.length &&
+      resolved.vectors.every((vec) => vec?.length === dim);
+    if (aligned) {
+      mode = "semantic";
+      jobVecs = resolved.vectors.slice(0, jobDocs.length);
+      shardVecs = resolved.vectors.slice(jobDocs.length);
+      meaning.rememberDocuments(
+        items.map((item, i) => ({ text: item.text, vector: resolved.vectors[i] })),
+      );
+    }
+  } else {
+    const embedded = await meaning.embedDocuments([...jobDocs, ...shardDocs]);
+    mode = embedded.mode === "semantic" ? "semantic" : "hash";
+    if (mode === "semantic") {
+      jobVecs = embedded.vectors.slice(0, jobDocs.length);
+      shardVecs = embedded.vectors.slice(jobDocs.length);
+    }
+  }
+
+  if (gen !== vectorGen) return mode;
   const rawNow = rawShards();
   const same =
     rawNow.length === raw.length &&
     rawNow.every((shard, i) => shard.id === raw[i].id && shardDocument(shard) === shardDocs[i]);
-  if (!same) return result.mode;
-  applyVectors(
-    result.mode,
-    result.vectors.slice(0, jobDocs.length),
-    result.vectors.slice(jobDocs.length),
-    rawNow,
-  );
+  if (!same) return mode;
+
+  if (mode === "semantic" && ready) {
+    publishVectorTiming("text", noteVectorStats(stats, performance.now() - started));
+  }
+  applyVectors(mode, jobVecs, shardVecs, rawNow);
   if (booted && teachEl?.open) renderTeach();
   refreshLetterWhy();
   return state.textMode;
@@ -236,13 +334,93 @@ async function refreshVision() {
   const gen = ++visionGen;
   const raw = rawShards();
   const photos = raw.map(photoKey);
-  const result = await vision.embedJobsAndPhotos(RAW_JOBS.map(jobDocument), photos);
+  const jobDocs = RAW_JOBS.map(jobDocument);
+  const started = performance.now();
+
+  if (vision.status() === "loading") await vision.load();
+
+  const dim = vision.status() === "ready" ? vision.vectorWidth() : 0;
+  let result = { mode: "feel", jobVectors: jobDocs.map(() => null), photoVectors: photos.map(() => null) };
+  let stats = { hits: 0, encoded: 0 };
+
+  if (!dim) {
+    result = await vision.embedJobsAndPhotos(jobDocs, photos);
+  } else {
+    const jobItems = RAW_JOBS.map((job, i) => ({
+      kind: "vision-job",
+      id: job.id,
+      model: IMAGE_MODEL,
+      fingerprint: textFingerprint(jobDocs[i]),
+      dim,
+      text: jobDocs[i],
+    }));
+    const photoItems = [];
+    const photoAt = [];
+    for (let i = 0; i < raw.length; i += 1) {
+      if (!photos[i]) continue;
+      const fingerprint = await photoFingerprint(raw[i]);
+      if (!fingerprint) continue;
+      photoAt.push(i);
+      photoItems.push({
+        kind: "image",
+        id: raw[i].id,
+        model: IMAGE_MODEL,
+        fingerprint,
+        dim,
+        url: photos[i],
+      });
+    }
+
+    const jobs = await embedCache.resolve(jobItems, async (missing) => {
+      const embedded = await vision.embedJobsAndPhotos(
+        missing.map((item) => item.text),
+        [],
+      );
+      if (embedded.mode !== "semantic") return { ok: false };
+      return { ok: true, vectors: embedded.jobVectors };
+    });
+    const frames = await embedCache.resolve(photoItems, async (missing) => {
+      const embedded = await vision.embedJobsAndPhotos(
+        [],
+        missing.map((item) => item.url),
+      );
+      if (embedded.mode !== "semantic") return { ok: false };
+      return { ok: true, vectors: embedded.photoVectors };
+    });
+
+    stats = {
+      hits: jobs.hits + frames.hits,
+      encoded: jobs.encoded + frames.encoded,
+    };
+
+    const jobVectors = jobs.failed ? null : jobs.vectors;
+    const photoVectors = photos.map(() => null);
+    if (!frames.failed) {
+      frames.vectors.forEach((vec, j) => {
+        photoVectors[photoAt[j]] = vec;
+      });
+    }
+    const jobsOk =
+      jobVectors &&
+      jobVectors.length === jobDocs.length &&
+      jobVectors.every((vec) => vec?.length === dim);
+    const photosOk =
+      !frames.failed &&
+      photoVectors.every((vec) => vec == null || vec.length === dim);
+    if (jobsOk && photosOk && vision.status() === "ready") {
+      result = { mode: "semantic", jobVectors, photoVectors };
+    }
+  }
+
   if (gen !== visionGen) return result.mode;
   const rawNow = rawShards();
   const same =
     rawNow.length === raw.length &&
     rawNow.every((shard, i) => shard.id === raw[i].id && photoKey(shard) === photos[i]);
   if (!same) return result.mode;
+  if (result.mode === "semantic" && dim) {
+    publishVectorTiming("photos", imageVectorStats(stats, performance.now() - started));
+  }
   rememberVision(rawNow, result);
   attachSideChannels();
   if (booted && teachEl?.open) renderTeach();
@@ -537,7 +715,9 @@ function focusEditor(shard) {
 
 function poolLine() {
   return `<p class="teach-note">Imported letters join this pool — data, then retrieve, then rank.</p>
-    <p class="teach-note">The line under the note is composed here from the job and the note — a name, a verb, a short phrase — and from the picture when that read is ready. No remote model writes it.</p>`;
+    <p class="teach-note">The line under the note is composed here from the job and the note — a name, a verb, a short phrase — and from the picture when that read is ready. No remote model writes it.</p>
+    <p class="teach-note">Note and photo vectors stay on this device, next to the pictures. A changed note or a replaced photo is embedded again. Nothing is uploaded.</p>
+    ${vectorNote ? `<p class="teach-note">${escapeHtml(vectorNote)}</p>` : ""}`;
 }
 
 function renderTeach() {
@@ -942,6 +1122,8 @@ async function onForget() {
   if (!shard?.imported) return;
   await finishEditing();
   await library.forget(shard.id);
+  await embedCache.forget(shard.id);
+  photoPrints.delete(`${shard.id}:${shard.fingerprint || shard.photo || ""}`);
   rebuildPool();
   state.usedIds = new Set();
   setHint("Let go. The pool moved on.");

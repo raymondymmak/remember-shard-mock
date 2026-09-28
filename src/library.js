@@ -1,11 +1,14 @@
 // Imported letters live on this machine.
-// Words and the log sit in localStorage. Photographs sit in IndexedDB.
+// Words and the log sit in localStorage. Photographs sit in IndexedDB,
+// and embedding vectors sit in a store beside them.
 
 import { mergePlan } from "./ingest.js";
 
 const META_KEY = "remember.library.v0";
 const DB_NAME = "remember";
+const DB_VERSION = 2;
 const STORE = "photos";
+export const EMBED_STORE = "embeddings";
 
 const KEPT = [
   "id",
@@ -91,14 +94,15 @@ function materialize(row) {
   };
 }
 
-function openDb() {
+export function openRememberDb() {
   if (typeof indexedDB === "undefined") return Promise.resolve(null);
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, 1);
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
       request.onupgradeneeded = () => {
         const db = request.result;
         if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+        if (!db.objectStoreNames.contains(EMBED_STORE)) db.createObjectStore(EMBED_STORE);
       };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
@@ -108,6 +112,10 @@ function openDb() {
     });
   }
   return dbPromise;
+}
+
+function openDb() {
+  return openRememberDb();
 }
 
 function putBlob(id, blob) {
@@ -132,6 +140,10 @@ function getBlob(id) {
       request.onerror = () => reject(request.error);
     });
   });
+}
+
+export function readPhoto(id) {
+  return getBlob(id);
 }
 
 function deleteBlob(id) {
