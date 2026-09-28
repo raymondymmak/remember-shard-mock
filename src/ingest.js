@@ -85,6 +85,8 @@ const GRIT_PHRASES = ["kept going", "one more", "get out", "went anyway"];
 const SOFT_PHRASES = ["good life", "nothing is happening", "cut grass"];
 const PEOPLE_PHRASES = ["about to see", "true thing", "last time"];
 
+// Kept on the shard so ranking still has a line of words.
+// The letter composes its own why from the job and the note (src/why.js).
 const WHY = {
   push: "You asked for a push. This is a day you already lived through.",
   soft: "Not a highlight. A texture from a day that was yours.",

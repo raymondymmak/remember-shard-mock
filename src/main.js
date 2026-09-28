@@ -3,6 +3,7 @@ import { fingerprintImage } from "./image.js";
 import {
   MIX_KEYS,
   WEIGHTS,
+  explainShard,
   jobDocument,
   prepareJobs,
   rankShards,
@@ -27,6 +28,7 @@ import {
   paperWash,
   vibeFromNote,
 } from "./ingest.js";
+import { composeWhy } from "./why.js";
 
 let JOBS = prepareJobs(RAW_JOBS);
 
@@ -213,12 +215,14 @@ async function refreshVectors() {
     rawNow,
   );
   if (booted && teachEl?.open) renderTeach();
+  refreshLetterWhy();
   return state.textMode;
 }
 
 function scheduleVectors() {
   const run = refreshVectors().catch(() => {
     applyCachedOrHash();
+    refreshLetterWhy();
     return state.textMode;
   });
   vectorFlight = run;
@@ -242,6 +246,7 @@ async function refreshVision() {
   rememberVision(rawNow, result);
   attachSideChannels();
   if (booted && teachEl?.open) renderTeach();
+  refreshLetterWhy();
   return result.mode;
 }
 
@@ -250,6 +255,7 @@ function scheduleVision() {
     jobVision = null;
     visionById.clear();
     attachSideChannels();
+    refreshLetterWhy();
     return "feel";
   });
   visionFlight = run;
@@ -472,13 +478,44 @@ function noteMarkup(shard) {
   `;
 }
 
+function letterWhy(shard) {
+  const job = currentJob();
+  if (!job || !shard) return "";
+  const row = explainShard(shard, {
+    job,
+    now: Date.now(),
+    shown: {},
+    log: [],
+  });
+  return composeWhy({
+    job,
+    note: shard.note,
+    placeholder: Boolean(shard.placeholder),
+    hasPhoto: Boolean(shard.photo || shard.hasPhoto),
+    photoAlt: shard.photoAlt || "",
+    text: row.text,
+    jobScore: row.parts.job,
+    image: row.image,
+    imageMode: row.imageMode,
+    imageVec: shard.imageVec,
+  });
+}
+
+function refreshLetterWhy() {
+  if (!booted || state.editing) return;
+  const shard = currentShard();
+  const line = shardEl.querySelector(".why");
+  if (!shard || !line) return;
+  line.textContent = letterWhy(shard);
+}
+
 function shardMarkup(shard) {
   const yours = shard.imported ? ' <span class="yours">· yours</span>' : "";
   return `
     ${printMarkup(shard)}
     ${noteMarkup(shard)}
     <p class="why-kicker">why this, why now</p>
-    <p class="why">${escapeHtml(shard.why)}</p>
+    <p class="why">${escapeHtml(letterWhy(shard))}</p>
     <p class="when">${escapeHtml(formatWhen(shard.date))}${yours}</p>
     <div class="marks" role="group" aria-label="How this memory landed">
       <button type="button" class="mark ${state.kept ? "is-kept" : ""}" data-act="keep">
@@ -499,7 +536,8 @@ function focusEditor(shard) {
 }
 
 function poolLine() {
-  return `<p class="teach-note">Imported letters join this pool — data, then retrieve, then rank.</p>`;
+  return `<p class="teach-note">Imported letters join this pool — data, then retrieve, then rank.</p>
+    <p class="teach-note">The line under the note is composed here from the job and the note — a name, a verb, a short phrase — and from the picture when that read is ready. No remote model writes it.</p>`;
 }
 
 function renderTeach() {
