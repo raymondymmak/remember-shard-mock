@@ -22,7 +22,7 @@ We hide the newest ~30% of keep/nah marks and fit only on the rest. Then we scor
 
 This is the population path, before Photos or Drive. Nothing is uploaded.
 
-Under the letter: **bring a photo or a note**, **or a folder**, or drop files on the page. Photos are jpg, png, or webp. Notes are `.md` or `.txt`.
+Under the letter: **bring a photo or a note**, **or a folder**, or drop files on the page. Photos are jpg, png, or webp. Notes are `.md` or `.txt`. The live site supports phone capture: take or choose a photo, add an optional short note, and it joins the pool.
 
 - A note binds to a photo when they share a name (`hike.jpg` + `hike.md`), including differences in case and punctuation.
 - One photo and one note dropped together, names aside, bind too.

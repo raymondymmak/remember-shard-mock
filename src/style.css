@@ -561,6 +561,92 @@ body {
   color: var(--ink-soft) !important;
 }
 
+.capture {
+  margin: 0.2rem 0.15rem 0;
+  text-align: center;
+}
+
+.capture-line {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.15rem 1.1rem;
+  margin: 0;
+}
+
+.capture-act {
+  appearance: none;
+  border: 0;
+  background: none;
+  min-height: 44px;
+  padding: 0.55rem 0.15rem;
+  cursor: pointer;
+  font-family: var(--serif);
+  font-size: 1.02rem;
+  font-style: italic;
+  font-weight: 360;
+  color: var(--ink-soft);
+}
+
+.capture-act:hover,
+.capture-act:focus-visible {
+  color: var(--terracotta);
+  outline: none;
+}
+
+.capture-keep {
+  color: var(--ink);
+}
+
+.capture-draft {
+  margin-top: 0.15rem;
+}
+
+.capture-print {
+  margin: 0.15rem auto 0;
+  width: min(100%, 210px);
+  overflow: hidden;
+  background: #c9bba6;
+  aspect-ratio: 4 / 5;
+}
+
+.capture-print img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(0.86) contrast(1.05) sepia(0.12);
+}
+
+.capture-note {
+  display: block;
+  width: 100%;
+  margin: 0.7rem 0 0;
+  padding: 0.1rem 0.35rem 0.35rem;
+  border: 0;
+  resize: vertical;
+  min-height: 4.4rem;
+  background: transparent;
+  text-align: center;
+  font-family: var(--serif);
+  font-size: 1.05rem;
+  font-weight: 360;
+  font-style: italic;
+  font-variation-settings: "opsz" 72;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.capture-note:focus {
+  outline: none;
+  box-shadow: inset 0 -1px 0 rgba(139, 77, 50, 0.35);
+}
+
+.capture-note::placeholder {
+  color: var(--mute);
+}
+
 .bring {
   margin: 0.15rem 0.15rem 0;
   text-align: center;
