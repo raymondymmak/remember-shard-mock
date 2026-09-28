@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>remember</title>
+    <meta
+      name="description"
+      content="A shard of your own life — you pick the job, the system picks the memory."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,360;0,9..144,500;1,9..144,360;1,9..144,440&family=Outfit:wght@300;400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div class="grain" aria-hidden="true"></div>
+    <main class="page">
+      <header class="mast">
+        <p class="wordmark">remember</p>
+        <p class="thesis">You pick the job. The system picks the memory.</p>
+      </header>
+
+      <nav class="jobs" aria-label="What do you need">
+        <p class="jobs-kicker">What do you need</p>
+        <div class="jobs-row" role="tablist" id="jobs"></div>
+      </nav>
+
+      <section class="stage" aria-live="polite">
+        <article class="shard" id="shard"></article>
+        <details class="teach" id="teach">
+          <summary>why this ranked</summary>
+          <div class="teach-body" id="teach-body"></div>
+        </details>
+      </section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
