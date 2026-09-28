@@ -350,11 +350,15 @@ body {
 }
 
 .teach > summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: fit-content;
   min-height: 40px;
   padding: 0.4rem 0.7rem;
   border-radius: 8px;
   font-size: 0.66rem;
+  line-height: 1;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   list-style: none;
@@ -368,6 +372,7 @@ body {
 .teach > summary::before {
   content: "› ";
   letter-spacing: 0;
+  line-height: 1;
 }
 
 .teach[open] > summary::before {
@@ -507,9 +512,13 @@ body {
 }
 
 .teach-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 36px;
   padding: 0.3rem 0.6rem;
   border-radius: 8px;
+  line-height: 1;
   font-size: 0.78rem;
 }
 
@@ -716,10 +725,14 @@ body {
 
 .intake-act,
 .capture-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 40px;
   padding: 0.4rem 0.7rem;
   border-radius: 8px;
   text-align: center;
+  line-height: 1;
   font-size: 0.8rem;
 }
 
@@ -729,15 +742,22 @@ body {
 }
 
 .samples-line {
+  display: flex;
+  justify-content: center;
+  align-items: center;
   margin: 0.55rem 0 0;
   padding-top: 0.55rem;
   border-top: 1px solid var(--line);
 }
 
 .samples-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 44px;
   padding: 0.28rem 0.65rem;
   border-radius: 8px;
+  line-height: 1;
   font-size: 0.75rem;
   color: var(--mute);
 }
