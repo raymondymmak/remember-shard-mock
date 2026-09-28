@@ -1,6 +1,7 @@
 # Publishes the letter to GitHub Pages on every push to main.
 # Uses the workflow's own GITHUB_TOKEN — no extra secrets.
 # Live page: https://raymondymmak.github.io/remember-shard-mock/
+# Pages is already set to build with GitHub Actions.
 
 name: Pages
 
@@ -13,8 +14,6 @@ permissions:
   contents: read
   pages: write
   id-token: write
-  # So the first run can select "GitHub Actions" as the Pages source.
-  administration: write
 
 concurrency:
   group: pages
@@ -56,31 +55,6 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Select GitHub Actions as the Pages source
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            const build_type = "workflow";
-            try {
-              await github.rest.repos.getPages({ owner, repo });
-              await github.rest.repos.updateInformationAboutPagesSite({
-                owner,
-                repo,
-                build_type,
-              });
-            } catch (error) {
-              if (error.status !== 404) {
-                core.warning(`Could not read Pages settings: ${error.message}`);
-                return;
-              }
-              try {
-                await github.rest.repos.createPagesSite({ owner, repo, build_type });
-              } catch (createError) {
-                core.warning(`Could not turn Pages on: ${createError.message}`);
-              }
-            }
-
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
