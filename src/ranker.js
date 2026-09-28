@@ -10,9 +10,12 @@ export const EMBED_DIM = 48;
 // How the final score is mixed. Job closeness does most of the work.
 // vibe / text start at 0 — they already live inside `job`. Training may
 // give them their own voice later.
-// image is a light, fixed nudge from the photograph (see src/image.js).
-// It is not in MIX_KEYS, so keep / nah do not train it. A sunny frame can
-// move the score a little. It cannot drown the note.
+// image is a light, fixed nudge from the photograph. When vision vectors
+// share one width (see src/vision.js) it is their cosine. Otherwise it is
+// the 6-d fingerprint (see src/image.js). Same part name either way, and
+// it is not in MIX_KEYS, so keep / nah do not train it. A frame can move
+// the score a little. It cannot drown the note. Stored marks may hold
+// either kind of scalar under `image`; the logistic mix never reads it.
 export const WEIGHTS = {
   job: 0.58,
   freshness: 0.14,
@@ -148,6 +151,57 @@ function sameWidth(vecs, dim) {
   return vecs.every((vec) => vec && typeof vec.length === "number" && vec.length === dim);
 }
 
+function withoutVision(item) {
+  if (!item || !Object.prototype.hasOwnProperty.call(item, "visionVec")) return item;
+  const { visionVec, ...rest } = item;
+  return rest;
+}
+
+// Attach CLIP vectors only when every job shares one width and every photo
+// vector is either that width or absent (a note on paper). A mismatch drops
+// them all so cosine never mixes lengths, and the fingerprint stays put.
+export function withVisionVectors(jobs, shards, jobVecs, shardVecs, mode = "semantic") {
+  const dim = jobVecs?.[0]?.length;
+  const aligned =
+    mode === "semantic" &&
+    jobs.length > 0 &&
+    jobVecs?.length === jobs.length &&
+    shardVecs?.length === shards.length &&
+    dim > 0 &&
+    sameWidth(jobVecs, dim) &&
+    shardVecs.every((vec) => vec == null || vec.length === dim);
+
+  if (!aligned) {
+    return {
+      jobs: jobs.map(withoutVision),
+      shards: shards.map(withoutVision),
+      mode: "feel",
+    };
+  }
+
+  return {
+    jobs: jobs.map((job, i) => ({ ...job, visionVec: jobVecs[i] })),
+    shards: shards.map((shard, i) => {
+      const base = withoutVision(shard);
+      const vec = shardVecs[i];
+      return vec ? { ...base, visionVec: vec } : base;
+    }),
+    mode: "semantic",
+  };
+}
+
+// Semantic cosine when the photograph and the job share a width.
+// Otherwise the fingerprint. null when there is no picture signal at all.
+export function photoSignal(shard, job) {
+  const seen = shard?.visionVec;
+  const asked = job?.visionVec;
+  if (seen?.length && asked?.length && seen.length === asked.length) {
+    return { image: cosine(seen, asked), imageMode: "semantic" };
+  }
+  const image = imageSimilarity(shard?.imageVec, job?.imagePrior);
+  return { image, imageMode: image == null ? null : "feel" };
+}
+
 // Swap in sentence vectors only when every job and shard shares one width.
 // A mismatch falls back to the hash so cosine never mixes two lengths.
 // Score parts stay scalars either way — only the vectors behind them change.
@@ -215,9 +269,10 @@ export function explainShard(shard, { job, now, shown, log, weights = WEIGHTS })
   const freshness = freshnessScore(shown[shard.id], now);
   const recency = recencyScore(shard.date, now);
   const feedback = feedbackScore(log, shard.id, job.id);
-  // null when this shard has no picture yet (a note on paper, or the
-  // thumbnail has not been read). That contributes 0 — we don't punish it.
-  const image = imageSimilarity(shard.imageVec, job.imagePrior);
+  // null when this shard has no picture signal yet (a note on paper, the
+  // thumbnail has not been read, or vision is not ready). That contributes
+  // 0 — we don't punish it.
+  const { image, imageMode } = photoSignal(shard, job);
   const w = mixWeights(weights);
 
   const parts = { job: jobSim, freshness, recency, feedback, image };
@@ -230,7 +285,7 @@ export function explainShard(shard, { job, now, shown, log, weights = WEIGHTS })
     w.feedback * parts.feedback +
     (w.image || 0) * (image ?? 0);
 
-  return { total, parts, vibe, text, image };
+  return { total, parts, vibe, text, image, imageMode };
 }
 
 export function rankShards({
