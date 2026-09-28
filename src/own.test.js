@@ -208,5 +208,10 @@ describe("my shards", { concurrency: 1 }, () => {
       css.indexOf("}", css.indexOf(".teach-scores {")),
     );
     assert.match(scores, /border-top:\s*1px solid var\(--line\)/);
+    assert.match(css, /\.teach-scores > \.teach-kicker:first-child \{[^}]*margin-top:\s*0/);
+    assert.match(
+      css,
+      /\.teach-scores > \.teach-list \+ \.teach-kicker \{[^}]*margin-top:\s*1\.5rem/,
+    );
   });
 });

@@ -439,8 +439,12 @@ body {
   border-top: 1px solid var(--line);
 }
 
-.teach-scores .teach-kicker {
+.teach-scores > .teach-kicker:first-child {
   margin-top: 0;
+}
+
+.teach-scores > .teach-list + .teach-kicker {
+  margin-top: 1.5rem;
 }
 
 .teach-body {
