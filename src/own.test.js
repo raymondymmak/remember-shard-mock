@@ -162,7 +162,11 @@ describe("my shards", { concurrency: 1 }, () => {
       html,
       /id="folio-prev"[\s\S]*id="folio-all"[\s\S]*id="folio-place"[\s\S]*id="folio-next"/,
     );
-    assert.match(html, /<summary class="lens">why this showed up<\/summary>/);
+    assert.match(
+      html,
+      /<details class="teach" id="teach">\s*<summary>why this showed up<\/summary>\s*<div class="teach-body"/,
+    );
+    assert.doesNotMatch(html, /<summary[^>]*\blens\b/);
   });
 
   it("keeps the score breakdown inline and has no numbers disclosure", () => {
@@ -176,5 +180,33 @@ describe("my shards", { concurrency: 1 }, () => {
     assert.match(main, /class="teach-scores"/);
     assert.match(main, /how it scored/);
     assert.equal(main.includes("<details"), false);
+    assert.match(css, /\.teach \{[^}]*backdrop-filter:\s*blur/);
+    const summary = css.slice(
+      css.indexOf(".teach > summary {"),
+      css.indexOf("}", css.indexOf(".teach > summary {")),
+    );
+    assert.match(summary, /background:\s*none/);
+    assert.match(summary, /border:\s*0/);
+    assert.match(summary, /box-shadow:\s*none/);
+    const body = css.slice(css.indexOf(".teach-body {"), css.indexOf("}", css.indexOf(".teach-body {")));
+    assert.equal(body.includes("backdrop-filter: blur"), false);
+    assert.match(body, /background:\s*none/);
+    const total = css.slice(
+      css.indexOf(".teach-list li.is-total {"),
+      css.indexOf("}", css.indexOf(".teach-list li.is-total {")),
+    );
+    assert.equal(total.includes("border-top: 1px solid var(--line)"), false);
+    assert.match(total, /border-top:\s*0/);
+    const totalRule = css.slice(
+      css.indexOf(".teach-list li.is-total::before {"),
+      css.indexOf("}", css.indexOf(".teach-list li.is-total::before {")),
+    );
+    assert.match(totalRule, /width:\s*2\.25rem/);
+    assert.match(totalRule, /height:\s*1px/);
+    const scores = css.slice(
+      css.indexOf(".teach-scores {"),
+      css.indexOf("}", css.indexOf(".teach-scores {")),
+    );
+    assert.match(scores, /border-top:\s*1px solid var\(--line\)/);
   });
 });
