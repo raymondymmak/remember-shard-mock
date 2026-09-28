@@ -349,8 +349,7 @@ body {
   color: var(--ink-soft);
 }
 
-.teach > summary,
-.teach-math > summary {
+.teach > summary {
   width: fit-content;
   min-height: 40px;
   padding: 0.4rem 0.7rem;
@@ -362,24 +361,20 @@ body {
   color: var(--ink-soft);
 }
 
-.teach > summary::-webkit-details-marker,
-.teach-math > summary::-webkit-details-marker {
+.teach > summary::-webkit-details-marker {
   display: none;
 }
 
-.teach > summary::before,
-.teach-math > summary::before {
+.teach > summary::before {
   content: "› ";
   letter-spacing: 0;
 }
 
-.teach[open] > summary::before,
-.teach-math[open] > summary::before {
+.teach[open] > summary::before {
   content: "ˇ ";
 }
 
-.teach[open] > summary,
-.teach-math[open] > summary {
+.teach[open] > summary {
   color: var(--ink);
   background-color: rgba(246, 239, 228, 0.9);
   border-color: rgba(139, 77, 50, 0.4);
@@ -404,8 +399,14 @@ body {
   color: var(--terracotta);
 }
 
-.teach-math {
+.teach-scores {
   margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.teach-scores .teach-kicker {
+  margin-top: 0;
 }
 
 .teach-body {

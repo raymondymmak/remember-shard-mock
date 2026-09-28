@@ -937,9 +937,7 @@ function renderTeach() {
     <ul class="teach-factors">
       ${reasons.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}
     </ul>
-    <details class="teach-math">
-      <summary>the numbers</summary>
-      ${poolLine()}
+    <div class="teach-scores">
       <p class="teach-kicker">how it scored</p>
       <ul class="teach-list">
         <li><span>closeness to the job</span><span>${fmt(row.parts.job)}</span></li>
@@ -959,7 +957,6 @@ function renderTeach() {
         <li><span>your likes and dislikes</span><span>${fmt(row.parts.feedback)}</span></li>
         <li class="is-total"><span>together</span><span>${fmt(row.total)}</span></li>
       </ul>
-      <p class="teach-note">Mood and the words are a cosine, compared on this device. Nothing is uploaded.</p>
       <p class="teach-kicker">closest three</p>
       <ul class="teach-also">
         ${top3
@@ -983,7 +980,8 @@ function renderTeach() {
           : ""
       }
       ${evalMarkup(store.loadEval())}
-    </details>
+      ${poolLine()}
+    </div>
     ${state.trainNote ? `<p class="teach-note">${escapeHtml(state.trainNote)}</p>` : ""}
     <div class="teach-actions">
       <button type="button" class="teach-act lens-seg" data-train="learn">learn from my marks</button>
