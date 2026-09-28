@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { draftNote } from "./ingest.js";
 import { SHARDS } from "./shards.js";
-import { composeWhy } from "./why.js";
+import { composeWhy, plainReasons } from "./why.js";
 
 const NOTE =
   "I didn’t want to go out this morning. I went anyway. By the third mile the heaviness had somewhere else to live.";
@@ -96,6 +96,34 @@ describe("why this helps today", () => {
     assert.notEqual(fromWords, fromImage);
     assert.match(fromImage, /picture|frame/i);
     assert.doesNotMatch(fromWords, /\bAI\b|as an assistant|remembered that/i);
+  });
+
+  it("gives a short plain reason, with cosine kept out", () => {
+    const push = plainReasons({
+      job: { id: "push", label: "Need a push" },
+      jobScore: 0.72,
+      text: 0.1,
+      image: 0.7,
+      imageMode: "feel",
+      freshness: 1,
+      recency: 0.2,
+      feedback: 0,
+    });
+    const people = plainReasons({
+      job: "people",
+      jobScore: 0.7,
+      text: 0.5,
+      freshness: 0.2,
+      feedback: 0.4,
+    });
+    assert.ok(push.length >= 2 && push.length <= 3);
+    assert.match(push[0], /kept going/);
+    assert.match(push.join(" "), /outdoor/);
+    assert.match(push.join(" "), /haven’t seen/);
+    assert.match(people[0], /someone you know/);
+    assert.match(people.join(" "), /liked this/);
+    assert.doesNotMatch([...push, ...people].join(" "), /cosine|ranked|placing|\bof \d+/i);
+    assert.deepEqual(plainReasons({}), []);
   });
 
   it("stays job-specific across the sample letters", () => {

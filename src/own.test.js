@@ -152,5 +152,13 @@ describe("my shards", { concurrency: 1 }, () => {
     assert.ok(html.includes('id="samples-toggle"'));
     assert.ok(html.includes('id="pool-cue"'));
     assert.ok(html.includes("Ranking the samples."));
+    assert.match(
+      html,
+      /class="intake pool-box"[\s\S]*class="intake-line"[\s\S]*class="samples-line"[\s\S]*id="pool-cue"/,
+    );
+    assert.equal(html.includes('id="folio-rank"'), false);
+    assert.equal(html.includes(">all shards<"), false);
+    assert.match(html, /id="folio-all"[\s\S]*id="folio-place"/);
+    assert.match(html, /<summary class="lens">why this showed up<\/summary>/);
   });
 });

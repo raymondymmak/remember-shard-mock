@@ -437,3 +437,79 @@ export function composeWhy({
   const line = writtenLine(jobId, signals, { winner, imageMode, imageVec });
   return line.trim();
 }
+
+const LIGHT = {
+  push: "brighter, outdoor light",
+  soft: "warmer, dimmer light",
+  people: "a middle light",
+};
+
+function reasonJobId(job) {
+  const id = typeof job === "string" ? job : job?.id;
+  if (id === "push" || id === "people" || id === "soft") return id;
+  return id ? "soft" : "";
+}
+
+function fitReason(jobId, score) {
+  const high = score >= 0.45;
+  const mid = score >= 0.25;
+  if (jobId === "push") {
+    if (high) return "The mood fits a day you kept going";
+    if (mid) return "The mood is partly a push";
+    return "The mood is only a loose fit for a push";
+  }
+  if (jobId === "people") {
+    if (high) return "The mood fits seeing someone you know";
+    if (mid) return "The mood is partly about people";
+    return "The mood is only a loose fit for seeing someone";
+  }
+  if (high) return "The mood fits a quiet, ordinary day";
+  if (mid) return "The mood is partly a soft memory";
+  return "The mood is only a loose fit for a soft memory";
+}
+
+function photoReason(jobId, image, imageMode) {
+  const score = num(image);
+  if (!Number.isFinite(score)) return "";
+  if (imageMode === "semantic") {
+    return score >= 0.25
+      ? "The photo matches what you asked for"
+      : "The photo is only a loose match for this job";
+  }
+  const light = LIGHT[jobId] || "the light this job likes";
+  return score >= 0.55
+    ? `The photo has ${light}, which this job likes`
+    : "The photo’s light only partly matches this job";
+}
+
+// Short reasons under the why-line. Plain words, no rank restatement.
+export function plainReasons({
+  job,
+  jobScore = 0,
+  text = 0,
+  image = null,
+  imageMode = null,
+  freshness = 0,
+  recency = 0,
+  feedback = 0,
+} = {}) {
+  const jobId = reasonJobId(job);
+  if (!jobId) return [];
+
+  const lines = [fitReason(jobId, num(jobScore))];
+  const mark = num(feedback);
+  if (mark > 0.15) lines.push("You’ve liked this for this job");
+  else if (mark < -0.15) lines.push("You’ve disliked this for this job");
+
+  const photo = image == null ? "" : photoReason(jobId, image, imageMode);
+  if (photo) lines.push(photo);
+
+  const fresh = num(freshness);
+  if (fresh >= 0.85) lines.push("You haven’t seen it lately");
+  else if (fresh < 0.4) lines.push("You saw this recently");
+
+  if (num(text) >= 0.45) lines.push("The words in the note line up with this job");
+  if (num(recency) >= 0.6) lines.push("The day was recent");
+
+  return lines.slice(0, 3);
+}

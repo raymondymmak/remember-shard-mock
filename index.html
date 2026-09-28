@@ -36,22 +36,21 @@
             <button type="button" class="folio-step lens-seg" id="folio-prev" aria-label="Previous letter">
               prev
             </button>
-            <p class="folio-place" id="folio-place" aria-live="polite">1 of 1</p>
             <button type="button" class="folio-step lens-seg" id="folio-next" aria-label="Next letter">
               next
             </button>
           </div>
-          <button
-            type="button"
-            class="folio-all lens-seg"
-            id="folio-all"
-            aria-expanded="false"
-            aria-controls="folio-drawer"
-          >
-            all shards
-          </button>
         </div>
-        <p class="folio-rank" id="folio-rank"></p>
+        <button
+          type="button"
+          class="folio-all lens"
+          id="folio-all"
+          aria-expanded="false"
+          aria-controls="folio-drawer"
+          aria-label="1 of 1, show every shard"
+        >
+          <span class="folio-place" id="folio-place" aria-live="polite">1 of 1</span>
+        </button>
         <div class="folio-drawer" id="folio-drawer" hidden>
           <p class="folio-kicker">ranked for this job</p>
           <ol class="folio-list" id="folio-list"></ol>
@@ -60,7 +59,7 @@
 
       <section class="stage" aria-live="polite">
         <article class="shard" id="shard"></article>
-        <div class="intake" id="capture">
+        <div class="intake pool-box" id="capture">
           <p class="pool-invite" id="pool-invite">One of yours, if you want.</p>
           <!-- Separate from the library input: capture skips the iOS photo picker. -->
           <input
@@ -132,7 +131,7 @@
           <p class="bring-hint" id="bring-hint" role="status"></p>
         </div>
         <details class="teach" id="teach">
-          <summary class="lens">why this ranked</summary>
+          <summary class="lens">why this showed up</summary>
           <div class="teach-body" id="teach-body"></div>
         </details>
       </section>

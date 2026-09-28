@@ -349,7 +349,8 @@ body {
   color: var(--ink-soft);
 }
 
-.teach summary {
+.teach > summary,
+.teach-math > summary {
   width: fit-content;
   min-height: 40px;
   padding: 0.4rem 0.7rem;
@@ -361,24 +362,50 @@ body {
   color: var(--ink-soft);
 }
 
-.teach summary::-webkit-details-marker {
+.teach > summary::-webkit-details-marker,
+.teach-math > summary::-webkit-details-marker {
   display: none;
 }
 
-.teach summary::before {
+.teach > summary::before,
+.teach-math > summary::before {
   content: "› ";
   letter-spacing: 0;
 }
 
-.teach[open] summary::before {
+.teach[open] > summary::before,
+.teach-math[open] > summary::before {
   content: "ˇ ";
 }
 
-.teach[open] summary {
+.teach[open] > summary,
+.teach-math[open] > summary {
   color: var(--ink);
   background-color: rgba(246, 239, 228, 0.9);
   border-color: rgba(139, 77, 50, 0.4);
   box-shadow: inset 0 -2px 0 var(--terracotta);
+}
+
+.teach-factors {
+  margin: 0.15rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.teach-factors li {
+  padding: 0.1rem 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+
+.teach-factors li::before {
+  content: "· ";
+  color: var(--terracotta);
+}
+
+.teach-math {
+  margin-top: 0.85rem;
 }
 
 .teach-body {
@@ -620,6 +647,17 @@ body {
   text-align: center;
 }
 
+.pool-box {
+  margin-top: 0.15rem;
+  padding: 0.7rem 0.65rem 0.75rem;
+  border-radius: 12px;
+  background-color: rgba(255, 252, 247, 0.28);
+  border: 1px solid rgba(43, 36, 25, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(5px) saturate(1.12);
+  -webkit-backdrop-filter: blur(5px) saturate(1.12);
+}
+
 .intake:has(.pool-invite[hidden]) {
   margin-top: 0;
 }
@@ -682,11 +720,13 @@ body {
 }
 
 .samples-line {
-  margin: 0.65rem 0 0;
+  margin: 0.55rem 0 0;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--line);
 }
 
 .samples-act {
-  min-height: 36px;
+  min-height: 44px;
   padding: 0.28rem 0.65rem;
   border-radius: 8px;
   font-size: 0.75rem;
@@ -815,7 +855,7 @@ body.is-receiving .receive {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.3rem;
+  gap: 0.55rem;
 }
 
 .folio-step,
@@ -845,32 +885,26 @@ body.is-receiving .receive {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
-.folio-place {
-  margin: 0;
-  min-width: 4.6rem;
-  text-align: center;
-  font-size: 0.62rem;
-  font-weight: 500;
+.folio-all {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-width: 5.5rem;
+  min-height: 44px;
+  margin: 0.45rem auto 0;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--ink-soft);
-}
-
-.folio-rank {
-  margin: 0.45rem 0 0;
-  text-align: center;
-  font-family: var(--serif);
-  font-size: 0.86rem;
-  font-style: italic;
-  font-weight: 360;
-  line-height: 1.4;
-  color: var(--ink-soft);
-}
-
-.folio-all {
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   font-size: 0.68rem;
+}
+
+.folio-all .folio-place {
+  margin: 0;
+  min-width: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
 }
 
 .folio-all[aria-expanded="true"] {
@@ -1083,6 +1117,7 @@ button.lens-seg:active,
 @media (prefers-reduced-transparency: reduce) {
   .lens,
   .lens-seg,
+  .pool-box,
   .intake-line,
   .capture-line,
   .teach-actions,
