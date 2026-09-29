@@ -1,4 +1,5 @@
 import { imageSimilarity } from "./image.js";
+import { isDislikeAction, isLikeAction } from "./marks.js";
 
 // Tiny retrieve → rank loop.
 // We score every shard for the current job, then the letter is whoever wins.
@@ -13,7 +14,7 @@ export const EMBED_DIM = 48;
 // image is a light, fixed nudge from the photograph. When vision vectors
 // share one width (see src/vision.js) it is their cosine. Otherwise it is
 // the 6-d fingerprint (see src/image.js). Same part name either way, and
-// it is not in MIX_KEYS, so keep / nah do not train it. A frame can move
+// it is not in MIX_KEYS, so likes and dislikes do not train it. A frame can move
 // the score a little. It cannot drown the note. Stored marks may hold
 // either kind of scalar under `image`; the logistic mix never reads it.
 export const WEIGHTS = {
@@ -260,8 +261,8 @@ export function feedbackMarks(log, shardId, jobId) {
   let marks = 0;
   for (const event of log) {
     if (event.shardId !== shardId || event.job !== jobId) continue;
-    if (event.action === "keep") marks += 1;
-    else if (event.action === "nah") marks -= 1.2;
+    if (isLikeAction(event.action)) marks += 1;
+    else if (isDislikeAction(event.action)) marks -= 1.2;
     // Older logs may still hold "another" (a light skip). The letter no
     // longer records it; those marks keep their small pull.
     else if (event.action === "another") marks -= 0.25;

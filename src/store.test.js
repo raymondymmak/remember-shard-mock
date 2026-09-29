@@ -133,7 +133,7 @@ describe("device storage", { concurrency: 1 }, () => {
     store.markShown("folio-a", 50);
     assert.equal(localStorage.getItem(FEEDBACK_KEY), feedback);
     assert.equal(store.log().length, 1);
-    assert.equal(store.log()[0].action, "keep");
+    assert.equal(store.log()[0].action, "like");
     assert.equal(store.shown()["folio-a"], 50);
   });
 

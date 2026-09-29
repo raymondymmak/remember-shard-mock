@@ -1,9 +1,10 @@
 // Supervised learning, tiny on purpose.
 // We already have a hand-written mix (the prior). Marks in the log are labels.
-// This file fits a linear model: P(keep) from the score parts we stored.
+// This file fits a linear model: P(like) from the score parts we stored.
 // After a fit we also hide some marks as a quiz — train vs test.
 // Each job fits its own logistic. Marks for other jobs are not examples.
 
+import { isDislikeAction, isLikeAction } from "./marks.js";
 import { MIX_KEYS, WEIGHTS } from "./ranker.js";
 
 // Start from the v0 mix. vibe / text are 0 until the data asks for them.
@@ -40,16 +41,17 @@ function bothClasses(examples) {
   return examples.some((row) => row.y === 1) && examples.some((row) => row.y === 0);
 }
 
-// "another" is ignored. keep / nah are clean yes / no labels;
+// "another" is ignored. like / dislike are clean yes / no labels;
 // another is "not this, maybe later" — too mushy for a binary teacher.
+// Older rows may still say keep / nah. Those are the same labels.
 export function examplesFromLog(log) {
   const examples = [];
   for (const event of log) {
-    if (event.action !== "keep" && event.action !== "nah") continue;
+    if (!isLikeAction(event.action) && !isDislikeAction(event.action)) continue;
     if (!event.scores || typeof event.scores !== "object") continue;
     examples.push({
       x: vectorFromScores(event.scores),
-      y: event.action === "keep" ? 1 : 0,
+      y: isLikeAction(event.action) ? 1 : 0,
     });
   }
   return examples;
@@ -66,7 +68,7 @@ export function inspectLog(log) {
     nahs,
     reason: ok
       ? ""
-      : "Need a couple of keep and nah marks first — both kinds, so the model can tell them apart.",
+      : "Need a couple of likes and dislikes first — both kinds, so the model can tell them apart.",
   };
 }
 
@@ -111,7 +113,7 @@ export function scoreMix(weights, examples) {
 }
 
 // Logistic regression with a short gradient-descent loop.
-// Loss: "how surprised are we by keep vs nah?" plus a tug back toward the prior
+// Loss: "how surprised are we by like vs dislike?" plus a tug back toward the prior
 // so a handful of marks cannot throw away the hand-written mix.
 export function fitExamples(
   examples,
@@ -142,14 +144,14 @@ export function fit(log, opts) {
   return fitExamples(examplesFromLog(log), opts);
 }
 
-// Keep / nah for this job only. A mark on another job is not an example.
+// Likes and dislikes for this job only. A mark on another job is not an example.
 export function eventsForJob(log, jobId) {
   if (typeof jobId !== "string" || !jobId || !Array.isArray(log)) return [];
   return log.filter((event) => event && event.job === jobId);
 }
 
-// Cold until this job has enough of its own keeps and nahs. The caller
-// then keeps the hand-written prior. Other jobs' marks do not count.
+// Cold until this job has enough of its own likes and dislikes. The caller
+// then stays on the hand-written prior. Other jobs' marks do not count.
 export function learnForJob(log, jobId, opts) {
   const scoped = eventsForJob(log, jobId);
   const check = inspectLog(scoped);
@@ -160,7 +162,7 @@ export function learnForJob(log, jobId, opts) {
       keeps: check.keeps,
       nahs: check.nahs,
       reason:
-        "Need a couple of keep and nah marks on this job first — both kinds, so the model can tell them apart.",
+        "Need a couple of likes and dislikes on this job first — both kinds, so the model can tell them apart.",
       weights: null,
       report: null,
     };
@@ -186,7 +188,7 @@ export function jobLearnCopy(label, source) {
   if (source === "fallback") {
     return `${name} is still on your earlier shared mix. Learning here changes only this job.`;
   }
-  return `${name} uses the hand-written mix until this job has a few keeps and nahs of its own.`;
+  return `${name} uses the hand-written mix until this job has a few likes and dislikes of its own.`;
 }
 
 // Fit only on the train split when the holdout is big enough and still
@@ -240,7 +242,7 @@ export function explainEval(report) {
 
   if (!report.holdout) {
     lines.push(
-      "Need a few more keep and nah marks before we can hide some as a test. We don’t invent a score.",
+      "Need a few more likes and dislikes before we can hide some as a test. We don’t invent a score.",
     );
     return lines;
   }

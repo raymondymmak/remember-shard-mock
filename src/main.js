@@ -762,8 +762,8 @@ function paintVote(action, on) {
 }
 
 function paintMarks() {
-  paintVote("keep", state.kept);
-  paintVote("nah", state.nixed);
+  paintVote("like", state.kept);
+  paintVote("dislike", state.nixed);
 }
 
 function folioThumb(shard) {
@@ -866,10 +866,10 @@ function shardMarkup(shard) {
     <p class="why">${escapeHtml(letterWhy(shard))}</p>
     <p class="when">${escapeHtml(formatWhen(shard.date))}${yours}</p>
     <div class="marks" role="group" aria-label="How this memory landed">
-      <button type="button" class="mark mark-vote mark-like lens ${state.kept ? "is-on" : ""}" data-act="keep" aria-label="like" aria-pressed="${state.kept ? "true" : "false"}">
+      <button type="button" class="mark mark-vote mark-like lens ${state.kept ? "is-on" : ""}" data-act="like" aria-label="like" aria-pressed="${state.kept ? "true" : "false"}">
         ${voteIcon()}
       </button>
-      <button type="button" class="mark mark-vote mark-dislike lens ${state.nixed ? "is-on" : ""}" data-act="nah" aria-label="dislike" aria-pressed="${state.nixed ? "true" : "false"}">
+      <button type="button" class="mark mark-vote mark-dislike lens ${state.nixed ? "is-on" : ""}" data-act="dislike" aria-label="dislike" aria-pressed="${state.nixed ? "true" : "false"}">
         ${voteIcon()}
       </button>
     </div>
@@ -1144,13 +1144,13 @@ function record(action) {
   });
 }
 
-// Like records keep; dislike records nah. They replace each other.
+// Like and dislike replace each other.
 // A second tap on the filled icon clears it to unmarked — it does not
 // bring the other mark back. Neither one turns the page — prev and next
 // do that. An unmarked letter is already a pass.
 async function onVote(action) {
   if (state.marking || state.animating || state.busy) return;
-  if (action !== "keep" && action !== "nah") return;
+  if (action !== "like" && action !== "dislike") return;
   const shardId = state.shardId;
   const jobId = state.job;
   if (!shardId) return;
@@ -1160,9 +1160,9 @@ async function onVote(action) {
     await finishEditing();
     if (state.shardId !== shardId || state.job !== jobId) return;
     const log = store.log();
-    const filled = action === "keep" ? isKept(log, shardId, jobId) : isNixed(log, shardId, jobId);
+    const filled = action === "like" ? isKept(log, shardId, jobId) : isNixed(log, shardId, jobId);
     if (filled) {
-      if (action === "keep") store.undoKeep(shardId, jobId);
+      if (action === "like") store.undoKeep(shardId, jobId);
       else store.undoNah(shardId, jobId);
       state.held = false;
     } else {
@@ -1313,7 +1313,7 @@ shardEl.addEventListener("click", (event) => {
     })();
     return;
   }
-  if (act === "keep" || act === "nah") void onVote(act);
+  if (act === "like" || act === "dislike") void onVote(act);
 });
 
 shardEl.addEventListener("focusout", (event) => {
@@ -1344,6 +1344,11 @@ function evalMarkup(report) {
   `;
 }
 
+function counted(n, one, many) {
+  const count = Number(n) || 0;
+  return `${count} ${count === 1 ? one : many}`;
+}
+
 async function onLearn() {
   await finishEditing();
   const job = currentJob();
@@ -1355,7 +1360,7 @@ async function onLearn() {
     return;
   }
   store.saveJobMix(job.id, learned.weights, learned.report);
-  state.trainNote = `Learned ${job.label} from ${learned.keeps} keep and ${learned.nahs} nah.`;
+  state.trainNote = `Learned ${job.label} from ${counted(learned.keeps, "like", "likes")} and ${counted(learned.nahs, "dislike", "dislikes")}.`;
   state.usedIds = new Set();
   resetBrowse();
   const next = pickCandidate();

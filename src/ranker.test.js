@@ -186,26 +186,31 @@ describe("retrieve then rank", () => {
     assert.notEqual(second[0].shard.id, first[0].shard.id);
   });
 
-  it("keep boosts and nah demotes that shard for that job", () => {
+  it("like boosts and dislike demotes that shard for that job", () => {
     const winner = rankShards({ shards, job: job("push") })[0].shard;
-    const kept = rankShards({
-      shards,
-      job: job("push"),
-      log: [{ shardId: winner.id, job: "push", action: "keep" }],
-    });
-    const nixed = rankShards({
-      shards,
-      job: job("push"),
-      log: [
-        { shardId: winner.id, job: "push", action: "nah" },
-        { shardId: winner.id, job: "push", action: "nah" },
-      ],
-    });
+    for (const [up, down] of [
+      ["keep", "nah"],
+      ["like", "dislike"],
+    ]) {
+      const kept = rankShards({
+        shards,
+        job: job("push"),
+        log: [{ shardId: winner.id, job: "push", action: up }],
+      });
+      const nixed = rankShards({
+        shards,
+        job: job("push"),
+        log: [
+          { shardId: winner.id, job: "push", action: down },
+          { shardId: winner.id, job: "push", action: down },
+        ],
+      });
 
-    assert.ok(kept[0].parts.feedback > 0);
-    assert.equal(kept[0].shard.id, winner.id);
-    assert.ok(nixed.find((row) => row.shard.id === winner.id).total < kept[0].total);
-    assert.notEqual(nixed[0].shard.id, winner.id);
+      assert.ok(kept[0].parts.feedback > 0);
+      assert.equal(kept[0].shard.id, winner.id);
+      assert.ok(nixed.find((row) => row.shard.id === winner.id).total < kept[0].total);
+      assert.notEqual(nixed[0].shard.id, winner.id);
+    }
   });
 
   it("feedback is per job", () => {

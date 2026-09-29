@@ -13,8 +13,8 @@ import {
 } from "./marks.js";
 import * as store from "./store.js";
 
-describe("keep label", () => {
-  it("is kept only when the latest mark for that shard and job is keep", () => {
+describe("like label", () => {
+  it("is a like only when the latest mark for that shard and job is a like", () => {
     const log = [
       { shardId: "a", job: "push", action: "keep" },
       { shardId: "a", job: "push", action: "another" },
@@ -28,7 +28,7 @@ describe("keep label", () => {
     assert.equal(isKept(log, "missing", "push"), false);
   });
 
-  it("undo removes the trailing keep and returns the label to keep", () => {
+  it("undo removes the trailing like and leaves the earlier dislike", () => {
     const log = [
       { shardId: "a", job: "push", action: "nah" },
       { shardId: "a", job: "push", action: "keep" },
@@ -39,7 +39,7 @@ describe("keep label", () => {
     assert.equal(next.length, 1);
   });
 
-  it("one undo clears a double-recorded keep without touching other jobs", () => {
+  it("one undo clears a double-recorded like without touching other jobs", () => {
     const log = [
       { shardId: "a", job: "soft", action: "keep" },
       { shardId: "b", job: "push", action: "keep" },
@@ -55,7 +55,7 @@ describe("keep label", () => {
     assert.equal(next.length, 3);
   });
 
-  it("leaves the log alone when the latest mark is not keep", () => {
+  it("leaves the log alone when the latest mark is not a like", () => {
     const log = [{ shardId: "a", job: "push", action: "nah" }];
     assert.equal(withoutLatestKeep(log, "a", "push"), log);
     assert.deepEqual(withoutLatestKeep([], "a", "push"), []);
@@ -63,7 +63,7 @@ describe("keep label", () => {
 });
 
 describe("like and dislike fill", () => {
-  it("fills like only when the latest mark is keep, dislike only when it is nah", () => {
+  it("fills like only when the latest mark is a like, dislike only when it is a dislike", () => {
     assert.deepEqual(markFace([], "a", "push"), { like: false, dislike: false });
     const liked = [{ shardId: "a", job: "push", action: "keep" }];
     assert.deepEqual(markFace(liked, "a", "push"), { like: true, dislike: false });
@@ -113,15 +113,15 @@ describe("like and dislike fill", () => {
     assert.equal(next.length, 0);
   });
 
-  it("leaves the log alone when the latest mark is not nah", () => {
+  it("leaves the log alone when the latest mark is not a dislike", () => {
     const log = [{ shardId: "a", job: "push", action: "keep" }];
     assert.equal(withoutLatestNah(log, "a", "push"), log);
     assert.deepEqual(withoutLatestNah([], "a", "push"), []);
   });
 });
 
-describe("undoKeep in the log", () => {
-  it("stores a keep and lifts it so the latest mark is no longer keep", () => {
+describe("undo of like in the log", () => {
+  it("stores a like and lifts it so the letter is unmarked", () => {
     store.recordFeedback({ shardId: "folio-a", job: "push", action: "keep", scores: {} });
     store.recordFeedback({ shardId: "folio-a", job: "push", action: "keep", scores: {} });
     store.recordFeedback({ shardId: "folio-b", job: "push", action: "nah", scores: {} });
@@ -129,13 +129,13 @@ describe("undoKeep in the log", () => {
 
     const next = store.undoKeep("folio-a", "push");
     assert.equal(isKept(next, "folio-a", "push"), false);
-    assert.equal(next.some((event) => event.shardId === "folio-b" && event.action === "nah"), true);
+    assert.equal(next.some((event) => event.shardId === "folio-b" && event.action === "dislike"), true);
     assert.equal(isKept(store.log(), "folio-a", "push"), false);
   });
 });
 
-describe("undoNah in the log", () => {
-  it("stores a nah and lifts it so the letter is unmarked", () => {
+describe("undo of dislike in the log", () => {
+  it("stores a dislike and lifts it so the letter is unmarked", () => {
     store.recordFeedback({ shardId: "folio-c", job: "push", action: "keep", scores: {} });
     store.recordFeedback({ shardId: "folio-c", job: "push", action: "nah", scores: {} });
     store.recordFeedback({ shardId: "folio-c", job: "push", action: "nah", scores: {} });
@@ -206,5 +206,45 @@ describe("like and dislike replace each other", () => {
 
     const cleared = store.undoKeep("folio-f", "people");
     assert.deepEqual(markFace(cleared, "folio-f", "people"), { like: false, dislike: false });
+  });
+});
+
+describe("older stored marks", () => {
+  it("reads them as like and dislike, and a new like replaces an old dislike", () => {
+    const old = [
+      { shardId: "a", job: "push", action: "keep" },
+      { shardId: "b", job: "push", action: "nah" },
+    ];
+    assert.deepEqual(markFace(old, "a", "push"), { like: true, dislike: false });
+    assert.deepEqual(markFace(old, "b", "push"), { like: false, dislike: true });
+
+    const mixed = [
+      { shardId: "a", job: "push", action: "keep" },
+      { shardId: "a", job: "push", action: "like" },
+    ];
+    assert.equal(withoutLatestKeep(mixed, "a", "push").length, 0);
+
+    const replaced = placeMark(old, { shardId: "b", job: "push", action: "like" });
+    assert.deepEqual(markFace(replaced, "b", "push"), { like: true, dislike: false });
+    assert.equal(
+      replaced.some((event) => event.shardId === "b" && event.action === "nah"),
+      false,
+    );
+    assert.deepEqual(markFace(replaced, "a", "push"), { like: true, dislike: false });
+  });
+
+  it("writes like and dislike from now on", () => {
+    store.recordFeedback({ shardId: "write-like", job: "push", action: "keep", scores: {} });
+    store.recordFeedback({ shardId: "write-dislike", job: "soft", action: "nah", scores: {} });
+    store.recordFeedback({ shardId: "write-swap", job: "people", action: "like", scores: {} });
+    store.recordFeedback({ shardId: "write-swap", job: "people", action: "dislike", scores: {} });
+    const log = store.log();
+    assert.equal(log.find((event) => event.shardId === "write-like").action, "like");
+    assert.equal(log.find((event) => event.shardId === "write-dislike").action, "dislike");
+    const swapped = log.filter((event) => event.shardId === "write-swap");
+    assert.equal(swapped.length, 1);
+    assert.equal(swapped[0].action, "dislike");
+    assert.deepEqual(markFace(log, "write-like", "push"), { like: true, dislike: false });
+    assert.deepEqual(markFace(log, "write-swap", "people"), { like: false, dislike: true });
   });
 });
