@@ -1,67 +1,72 @@
 # remember
 
-A tiny, single-page prototype of a **memory shard** — not a product, not a vault, not a feed.
+One photo, one note, brought back when it would help.
 
-**remember** is the idea that past-you can prod present-you with one useful piece of your own life (a photo bound to a note), without searching. You pick the job. The system picks the memory.
+**remember** is a small offline letter for passive resurfacing. You say what today needs. It picks one shard of your own life — a photograph bound to a few words — and shows it like a note from an earlier self. For anyone who captures a lot and almost never goes back to look.
 
-This page exists so the shard can be *felt*: layout, tone, and the meaning-link between image and words. It is not Apple Memories, not On This Day, not a collage. It should read like a short letter from an earlier self that helps *today*.
+**Live:** https://raymondymmak.github.io/remember-shard-mock/
 
-## The v0 loop
+## Why
 
-retrieve → rank → feedback. Each job is a query (a small grit / softness / people vibe, plus words). Every shard in the pool is scored with cosine similarity, a not-shown-recently term, a light recency term, and your keep / nah marks.
+The camera roll gets longer. The useful bits stay buried. The bet is small: past-you can prod present-you with one true thing — a push when the day is heavy, a quiet ordinary moment, or one fact about a person before you walk in. You pick the job. The page picks the memory.
 
-Word closeness uses a small sentence model, `Xenova/all-MiniLM-L6-v2`, through Transformers.js. It runs in the browser. The first visit may download the weights; after that they stay in the browser cache. Notes and photos are not uploaded, and there is no API key. The letter paints first and loads the model after. While it is loading — or if it cannot load — ranking uses the hashed word buckets in `embedText` instead. keep / nah still learn from the same score parts (closeness, freshness, recency, vibe, words). Only the vectors behind the word cosine change. A revised note is embedded again. The vectors themselves stay on this device, in IndexedDB next to the photographs. A return visit reuses them. Editing the note, replacing the photo, or changing the model (`minilm-l6-v2`, `clip-vit-base-patch32`) embeds again. A vector from a different model, or a different width, is never mixed into the cosine. A photograph also gets a small fingerprint read in the browser from the pixels themselves — brightness, warmth, and a rough histogram — compared with what that job likes in a picture: push a bit brighter and outdoor, soft warmer and dimmer, people in the middle. It nudges the score. It does not overrule the note, and keep / nah do not train it. Once `Xenova/clip-vit-base-patch32` is ready, that same image slot is a CLIP cosine between the photograph and the job’s words (one shared width, still in the browser); the fingerprint stays the fallback, and the two widths are never mixed. The letter is whoever wins. Under that letter, **prev** and **next** walk the rest of the same ranked pool. The **1 of 12** control between them opens every shard in that order, and it moves when you turn the page, change jobs, or mark like / dislike. Looking through the pool does not replace retrieve → rank, and it does not mark the others as shown. Marks land in localStorage so the next ranking, even after a reload, can move. **why this showed up** opens the same why-line that sits under the note, plus a few short reasons, with the score breakdown beside them in the same glass box.
+## What’s working
 
-The line under the note — why this helps today — is composed in the browser from the job you picked and from the note (a name, a verb, a short phrase), plus the picture when that read is ready. It is not a remote model. Ranking does not use that composed line.
+- **Job, then a letter.** Three jobs: Need a push, Soft memory, Prep for people & names. Every shard in the pool is scored. The letter is whoever wins.
+- **Like and dislike.** Those are the keep and nah marks, stored with the score from that moment, so the next ranking can move — including after a reload. One letter, one mark, for the job you are on. Tap the filled icon again and it clears. Leave it unmarked and turn the page: that is a pass. Prev and next do not write a mark, and they do not count the other letters as shown.
+- **Your files, on this machine.** Take a photo, choose one, pick files or a folder, or drop them on the page. A shared name binds a note to a photo (`hike.jpg` + `hike.md`). One photo and one note dropped together bind too. A photo alone gets a short placeholder you can revise. A note alone is a letter on warm paper. The first real shard sets the sample library aside.
+- **Meaning in the browser.** Notes use a small sentence model (`all-MiniLM-L6-v2`). Photos use CLIP against the job’s words. The letter paints first. While the weights download — or if they never do — ranking uses hashed words and a brightness/warmth fingerprint read from the pixels. Vectors are cached on the device and reused until the note, the photo, or the model changes.
+- **Why this showed up.** The line under the note is composed here from the job and the note (a name, a verb, a short phrase), and from the picture once that read is ready. The glass box under the letter opens the same line, a few reasons, how it scored, the total, and the closest three.
+- **A mix you can teach.** “Learn from my marks” fits a small logistic model on those score parts and hides the newest marks as a quiz. If there are not enough held-out marks, it says so. Reset puts the hand-written mix back. You can download the log as JSON.
 
-## This is supervised learning
+Sample photos are Unsplash stand-ins. The sample copy is invented.
 
-Like and dislike on the letter are the keep and nah marks. keep and nah are labels: wanted / not wanted, stored with the score parts from that moment. **learn from my marks** fits a small logistic model (gradient descent, starting from the hand-written mix) that predicts P(keep) from those parts — job, freshness, recency, vibe, words. The ranking formula then uses the learned weights. An older skip still sitting in the log is ignored here; it is not a clean class. **reset to default mix** restores the prior. You can download the marks as JSON. No backend. The learned mix is a small logistic model. It does not train the sentence vectors.
+## How it’s put together
 
-## Train vs test
+One narrow column. Top to bottom on the page:
 
-We hide the newest ~30% of keep/nah marks and fit only on the rest. Then we score both the default mix and the learned mix on the hidden marks (accuracy and log-loss). That holdout is the honest quiz: a mix can look clever on marks it already saw and still fail on ones it didn’t. If there aren’t enough hidden marks, we say so — we don’t invent a score. If the learned mix loses on the holdout, that’s overfitting, and we say that too.
+1. **Room.** Parchment, plus a grain overlay. Dropping files covers it with “leave them here.”
+2. **Mast.** The wordmark, “You pick the job. The system picks the memory.”, and a quiet status while the models load.
+3. **Jobs.** Three tabs under “What do you need.”
+4. **The pool, above the letter.** Prev, “1 of N”, next. “1 of N” opens every shard in ranked order. That order stays put while you browse, so the count does not reshuffle under you. Ends do not wrap. Arrow keys walk the same list.
+5. **The letter.** The photo, or warm paper when there is no photo. The note. “Why this, why now.” The date. Like and dislike.
+6. **Bring your own.** Take a photo, choose one, files, folder, and samples in / samples aside. One quiet plate.
+7. **Why this showed up.** One glass box. Learn, reset, download, and (for a letter of yours) let this one go, live inside it.
 
-## Bring your own
+`index.html` is the shell. `src/main.js` boots the page and paints it. `src/style.css` is the room, the type, and the glass.
 
-This is the population path, before Photos or Drive. Nothing is uploaded.
+| Module | What it owns |
+| --- | --- |
+| `src/shards.js` | The three jobs and the twelve sample letters |
+| `src/ranker.js` | The score. Highest total is the letter |
+| `src/why.js` | The why-line and the short reasons |
+| `src/meaning.js` | Sentence embeddings |
+| `src/vision.js` | CLIP for the photograph |
+| `src/image.js` | The fingerprint, until CLIP is ready |
+| `src/embed-cache.js` | Saved vectors |
+| `src/ingest.js`, `src/collect.js` | Turning a drop or a file picker into shards |
+| `src/library.js` | Your letters, and whether samples are in the pool |
+| `src/marks.js`, `src/store.js` | Like / dislike, the learned mix, last-shown times |
+| `src/browse.js` | “1 of N”, prev, next |
+| `src/train.js` | The logistic fit and the holdout |
+| `src/own.js` | The invite line and the samples toggle |
 
-Under the letter, one quiet box holds importing and the sample pool together: **take a photo**, **choose one**, **files**, or a **folder** — or drop files on the page — and **samples in** / **samples aside**. Photos are jpg, png, or webp. Notes are `.md` or `.txt`. A photo you take or choose can carry a short note before you keep it.
+The score is a mix: closeness to the job (a grit / softness / people vibe, plus the words), your marks, not-shown-recently, a light recency term, and a small read of the photo. Default weights are job `0.58`, feedback `0.20`, freshness `0.14`, recency `0.08`, image `0.08`. Vibe and words already sit inside job closeness, so their extra weights start at `0` until your marks ask for them. The photo can nudge. It cannot drown the note.
 
-- A note binds to a photo when they share a name (`hike.jpg` + `hike.md`), including differences in case and punctuation.
-- One photo and one note dropped together, names aside, bind too.
-- A photo alone gets a short first-person placeholder you can revise. The why-line still comes from the job, and from the picture once that read is ready.
-- A note alone is a letter on warm paper.
-- Several photos and one unrelated note stay separate, so a caption is not pasted onto the wrong frame.
+Last-shown times live in `remember.shown.v0`. A reload still knows what was retrieved. Browsing the pool does not stamp the rest as shown.
 
-Images are kept in IndexedDB, and so are the note and photo vectors once a model has produced them. The words, the vibe guess, and the keep / nah log stay in localStorage, so a reload still has them. The vectors are not uploaded. A keyword guess sets the grit / softness / people vector (mid values when the note doesn’t lean). Revise the note and that guess moves with it. Imported letters join the pool — data, then retrieve, then rank. The first photo or note you keep sets the samples aside, so the letter ranks your shards; **samples in** brings the demo library back. keep / nah still teach the mix.
+## Run it
 
-No account, no backend, no Google Photos or Drive API.
-
-## Jobs in this mock
-
-1. **Need a push** — motivation when down
-2. **Soft memory** — gentle continuity / texture
-3. **Prep for people & names** — one true thing about someone before you see them
-
-Quiet marks on the letter: **like** and **dislike** (the keep and nah marks). One letter has one mark for the job you are on: like, dislike, or unmarked. Like while it is disliked becomes like only, and dislike while it is liked becomes dislike only. Tapping the filled icon again clears it; that undo does not bring the other mark back. Leaving a letter unmarked and turning the page with **prev** / **next** is a pass. Switching shards or jobs reads the fill from the log again.
-
-The sample photos are Unsplash stand-ins. Sample copy is invented. Your own files never leave the browser.
-
-## Run
-
-Live, without npm: https://raymondymmak.github.io/remember-shard-mock/
-
-A push to `main` builds the page with GitHub Actions and publishes that URL. The workflow uses the default `GITHUB_TOKEN` only.
-
-Locally:
+Vite and vanilla JS. No framework. The only runtime dependency is `@xenova/transformers`. A push to `main` runs the tests, builds, and publishes the live page with GitHub Actions.
 
 ```bash
+git clone https://github.com/raymondymmak/remember-shard-mock.git
+cd remember-shard-mock
 npm install
 npm run dev
 ```
 
-Then open the local URL Vite prints (usually `http://localhost:5173`).
+Open the URL Vite prints, usually http://localhost:5173.
 
 ```bash
 npm test
@@ -69,6 +74,29 @@ npm run build
 npm run preview
 ```
 
-## Iterate
+`npm test` runs `node --test src/*.test.js`. The tests sit next to the modules they cover.
 
-Shard copy and hand-authored vibe vectors live in `src/shards.js`. The scoring math lives in `src/ranker.js`. The why-line under the note is composed in `src/why.js`. Sentence meaning lives in `src/meaning.js`; the hashed fallback stays in `embedText`. The photograph's fingerprint lives in `src/image.js`; its CLIP embedding lives in `src/vision.js`. Saved vectors live in `src/embed-cache.js`. The tiny trainer lives in `src/train.js`. Turning local files into shards lives in `src/ingest.js`; keeping them lives in `src/library.js`. Layout and type live in `src/style.css`. Keep the page a letter.
+Locally the site is at `/`. The Pages build uses `/remember-shard-mock/` so the sample photos still resolve.
+
+## Locks
+
+- You pick the job. The page picks one memory.
+- Offline. Notes, photos, and vectors stay in this browser. No account, no API key. Bringing your own is a file or a picture you take — there is no Photos or Drive connection.
+- The why-line is composed here. No cloud LLM writes it. Ranking does not use that sentence.
+- Like and dislike teach the mix of job, freshness, recency, vibe, and words. They do not teach the photo nudge.
+- A vector from another model, or another width, is never folded into the same cosine. Hash, MiniLM, the fingerprint, and CLIP each stay in their own slot.
+
+On this device:
+
+| Key | Holds |
+| --- | --- |
+| `remember.feedback.v0` | The like / dislike log |
+| `remember.weights.v0` | The learned mix, and the holdout note |
+| `remember.shown.v0` | When each shard was last retrieved |
+| `remember.library.v0` | Your words, and whether the samples are in |
+
+Photos and embedding vectors sit in IndexedDB, database `remember`, beside that log.
+
+## Where it is
+
+The letter works. The pool is the twelve samples plus whatever you keep locally, and a shown time survives a reload so the same shard is a little less eager to win again. That is the current edge of it.
