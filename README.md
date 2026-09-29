@@ -17,7 +17,7 @@ The camera roll gets longer. The useful bits stay buried. The bet is small: past
 - **Your files, on this machine.** Take a photo, choose one, pick files or a folder, or drop them on the page. A shared name binds a note to a photo (`hike.jpg` + `hike.md`). One photo and one note dropped together bind too. A photo alone gets a short placeholder you can revise. A note alone is a letter on warm paper. The first real shard sets the sample library aside.
 - **Meaning in the browser.** Notes use a small sentence model (`all-MiniLM-L6-v2`). Photos use CLIP against the job’s words. The letter paints first. While the weights download — or if they never do — ranking uses hashed words and a brightness/warmth fingerprint read from the pixels. Vectors are cached on the device and reused until the note, the photo, or the model changes.
 - **Why this showed up.** The line under the note is composed here from the job and the note (a name, a verb, a short phrase), and from the picture once that read is ready. The glass box under the letter opens the same line, a few reasons, how it scored, the total, and the closest three.
-- **A mix you can teach.** “Learn from my marks” fits a small logistic model on those score parts and hides the newest marks as a quiz. If there are not enough held-out marks, it says so. Reset puts the hand-written mix back. You can download the log as JSON.
+- **A mix you can teach, per job.** “Learn from this job” fits a small logistic model on the keep and nah marks for the job you are on. Ranking for that job uses that job’s weights. A job with fewer than two keeps and two nahs stays on the hand-written mix; marks on the other jobs do not count. “Reset this job’s mix” clears only the job you are on. An older shared mix still in this browser is kept as a fallback until that job learns its own, or you reset it. The newest marks on that job are hidden as a quiz. If there are not enough held-out marks, it says so. You can download the log as JSON.
 
 Sample photos are Unsplash stand-ins. The sample copy is invented.
 
@@ -31,7 +31,7 @@ One narrow column. Top to bottom on the page:
 4. **The pool, above the letter.** Prev, “1 of N”, next. “1 of N” opens every shard in ranked order. That order stays put while you browse, so the count does not reshuffle under you. Ends do not wrap. Arrow keys walk the same list.
 5. **The letter.** The photo, or warm paper when there is no photo. The note. “Why this, why now.” The date. Like and dislike.
 6. **Bring your own.** Take a photo, choose one, files, folder, and samples in / samples aside. One quiet plate.
-7. **Why this showed up.** One glass box. Learn, reset, download, and (for a letter of yours) let this one go, live inside it.
+7. **Why this showed up.** One glass box. Learn this job, reset this job’s mix, download, and (for a letter of yours) let this one go, live inside it.
 
 `index.html` is the shell. `src/main.js` boots the page and paints it. `src/style.css` is the room, the type, and the glass.
 
@@ -83,7 +83,7 @@ Locally the site is at `/`. The Pages build uses `/remember-shard-mock/` so the 
 - You pick the job. The page picks one memory.
 - Offline. Notes, photos, and vectors stay in this browser. No account, no API key. Bringing your own is a file or a picture you take — there is no Photos or Drive connection.
 - The why-line is composed here. No cloud LLM writes it. Ranking does not use that sentence.
-- Like and dislike teach the mix of job, freshness, recency, vibe, and words. They do not teach the photo nudge.
+- Like and dislike teach the mix of the job you are on — job, freshness, recency, vibe, and words. They do not teach the other jobs, and they do not teach the photo nudge or the feedback weight.
 - A vector from another model, or another width, is never folded into the same cosine. Hash, MiniLM, the fingerprint, and CLIP each stay in their own slot.
 
 On this device:
@@ -91,7 +91,7 @@ On this device:
 | Key | Holds |
 | --- | --- |
 | `remember.feedback.v0` | The like / dislike log |
-| `remember.weights.v0` | The learned mix, and the holdout note |
+| `remember.weights.v0` | Each job’s learned mix, and that job’s holdout note. An older flat mix is kept as a shared fallback |
 | `remember.shown.v0` | When each shard was last retrieved |
 | `remember.library.v0` | Your words, and whether the samples are in |
 

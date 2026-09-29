@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { JOBS, SHARDS } from "./shards.js";
-import { prepareJobs, prepareShards, rankShards } from "./ranker.js";
+import { WEIGHTS, mixWeights, prepareJobs, prepareShards, rankShards } from "./ranker.js";
+import { learnForJob } from "./train.js";
 
 const memory = new Map();
 globalThis.localStorage = {
@@ -18,12 +19,14 @@ globalThis.localStorage = {
 
 const SHOWN_KEY = "remember.shown.v0";
 const FEEDBACK_KEY = "remember.feedback.v0";
+const WEIGHTS_KEY = "remember.weights.v0";
 
 let session = 0;
 
 function resetStorage() {
   memory.clear();
   delete globalThis.__rememberShown;
+  delete globalThis.__rememberWeights;
 }
 
 function newStore() {
@@ -31,7 +34,7 @@ function newStore() {
   return import(`./store.js?shown=${session}`);
 }
 
-describe("shown times", { concurrency: 1 }, () => {
+describe("device storage", { concurrency: 1 }, () => {
   it("round-trips last-shown timestamps through a versioned record", async () => {
     resetStorage();
     const first = await newStore();
@@ -165,5 +168,167 @@ describe("shown times", { concurrency: 1 }, () => {
     assert.equal(freshRow.parts.freshness, 1);
     assert.ok(shownRow.total < freshRow.total);
     assert.equal(warm[0].shard.id, "still-new");
+  });
+
+  it("migrates a flat v0 mix into a shared fallback without dropping it", async () => {
+    resetStorage();
+    const flat = {
+      job: 0.2,
+      freshness: 0.5,
+      recency: 0.9,
+      vibe: 1.2,
+      text: 0.05,
+      feedback: 9,
+      image: 9,
+    };
+    memory.set(WEIGHTS_KEY, JSON.stringify(flat));
+    const first = await newStore();
+    const expected = {
+      job: 0.2,
+      freshness: 0.5,
+      recency: 0.9,
+      vibe: 1.2,
+      text: 0.05,
+    };
+
+    assert.deepEqual(first.mixForJob("push"), expected);
+    assert.deepEqual(first.mixForJob("soft"), expected);
+    assert.equal(first.mixSource("people"), "fallback");
+    assert.equal(mixWeights(first.mixForJob("push")).feedback, WEIGHTS.feedback);
+    assert.equal(mixWeights(first.mixForJob("push")).image, WEIGHTS.image);
+
+    const persisted = JSON.parse(localStorage.getItem(WEIGHTS_KEY));
+    assert.equal(persisted.v, 3);
+    assert.deepEqual(persisted.fallback, expected);
+    assert.equal(persisted.fallback.image, undefined);
+    assert.equal(persisted.fallback.feedback, undefined);
+    assert.deepEqual(persisted.jobs, {});
+
+    const second = await newStore();
+    assert.deepEqual(second.mixForJob("people"), expected);
+    assert.equal(JSON.parse(localStorage.getItem(WEIGHTS_KEY)).v, 3);
+  });
+
+  it("migrates a wrapped v2 mix and lets one job specialize or reset", async () => {
+    resetStorage();
+    const mix = { job: 0.4, freshness: 0.2, recency: 0.2, vibe: 0.3, text: 0.1 };
+    const oldEval = { fittedOn: "all", train: { n: 4 } };
+    memory.set(
+      WEIGHTS_KEY,
+      JSON.stringify({ v: 2, mix: { ...mix, image: 4, feedback: 4 }, eval: oldEval }),
+    );
+    const store = await newStore();
+
+    assert.deepEqual(store.mixForJob("push"), mix);
+    assert.deepEqual(store.evalForJob("soft"), oldEval);
+    assert.equal(store.mixSource("people"), "fallback");
+
+    const learned = { job: 0.1, freshness: 0.1, recency: 0.1, vibe: 2, text: 0, image: 8 };
+    store.saveJobMix("push", learned, { fittedOn: "train" });
+    assert.deepEqual(store.mixForJob("push"), {
+      job: 0.1,
+      freshness: 0.1,
+      recency: 0.1,
+      vibe: 2,
+      text: 0,
+    });
+    assert.equal(store.mixSource("push"), "job");
+    assert.deepEqual(store.evalForJob("push"), { fittedOn: "train" });
+    assert.deepEqual(store.mixForJob("soft"), mix);
+    assert.deepEqual(store.evalForJob("soft"), oldEval);
+    assert.equal(store.mixSource("soft"), "fallback");
+
+    store.clearJobMix("push");
+    assert.equal(store.mixForJob("push"), null);
+    assert.equal(store.mixSource("push"), "prior");
+    assert.equal(store.evalForJob("push"), null);
+    assert.deepEqual(store.mixForJob("people"), mix);
+
+    const saved = JSON.parse(localStorage.getItem(WEIGHTS_KEY));
+    assert.deepEqual(saved.fallback, mix);
+    assert.equal(saved.jobs.push, undefined);
+    assert.equal(saved.prior.push, true);
+
+    const reloaded = await newStore();
+    assert.equal(reloaded.mixForJob("push"), null);
+    assert.deepEqual(reloaded.mixForJob("soft"), mix);
+
+    reloaded.saveJobMix("push", learned, { fittedOn: "train" });
+    assert.equal(reloaded.mixSource("push"), "job");
+    assert.equal(reloaded.mixForJob("push").vibe, 2);
+    assert.deepEqual(reloaded.mixForJob("soft"), mix);
+  });
+
+  it("saving one job's mix does not move another job", async () => {
+    resetStorage();
+    const store = await newStore();
+    const highVibe = { job: 0.72, freshness: 0.5, recency: 0.12, vibe: 0.96, text: 0.35 };
+    const highRecency = { job: 0.38, freshness: 0.5, recency: 0.94, vibe: 0.12, text: 0.35 };
+    for (let i = 0; i < 4; i += 1) {
+      store.recordFeedback({
+        shardId: `push-keep-${i}`,
+        job: "push",
+        action: "keep",
+        scores: highVibe,
+        timestamp: 1000 + i,
+      });
+      store.recordFeedback({
+        shardId: `push-nah-${i}`,
+        job: "push",
+        action: "nah",
+        scores: highRecency,
+        timestamp: 2000 + i,
+      });
+      store.recordFeedback({
+        shardId: `soft-keep-${i}`,
+        job: "soft",
+        action: "keep",
+        scores: highRecency,
+        timestamp: 3000 + i,
+      });
+      store.recordFeedback({
+        shardId: `soft-nah-${i}`,
+        job: "soft",
+        action: "nah",
+        scores: highVibe,
+        timestamp: 4000 + i,
+      });
+    }
+
+    const push = learnForJob(store.log(), "push");
+    const soft = learnForJob(store.log(), "soft");
+    const people = learnForJob(store.log(), "people");
+    assert.equal(push.ok, true);
+    assert.equal(soft.ok, true);
+    assert.equal(people.ok, false);
+    assert.equal(people.weights, null);
+
+    store.saveJobMix("push", push.weights, push.report);
+    store.saveJobMix("soft", soft.weights, soft.report);
+    const softMix = store.mixForJob("soft");
+    assert.equal(store.mixSource("people"), "prior");
+    assert.equal(store.mixForJob("people"), null);
+
+    for (let i = 0; i < 3; i += 1) {
+      store.recordFeedback({
+        shardId: `push-again-keep-${i}`,
+        job: "push",
+        action: "keep",
+        scores: highVibe,
+        timestamp: 5000 + i,
+      });
+      store.recordFeedback({
+        shardId: `push-again-nah-${i}`,
+        job: "push",
+        action: "nah",
+        scores: highRecency,
+        timestamp: 6000 + i,
+      });
+    }
+    const pushAgain = learnForJob(store.log(), "push");
+    store.saveJobMix("push", pushAgain.weights, pushAgain.report);
+    assert.deepEqual(store.mixForJob("soft"), softMix);
+    assert.notDeepEqual(store.mixForJob("push"), softMix);
+    assert.equal(store.mixForJob("people"), null);
   });
 });

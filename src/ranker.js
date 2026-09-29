@@ -28,11 +28,21 @@ export const WEIGHTS = {
 
 export const MIX_KEYS = ["job", "freshness", "recency", "vibe", "text"];
 
+// Learned mixes may only move MIX_KEYS. Feedback and the photo stay at the
+// hand-written weights, even if a stored mix still carries those keys.
 export function mixWeights(learned) {
+  const tuned = {};
+  if (learned && typeof learned === "object" && !Array.isArray(learned)) {
+    for (const key of MIX_KEYS) {
+      const n = Number(learned[key]);
+      if (Number.isFinite(n)) tuned[key] = n;
+    }
+  }
   return {
     ...WEIGHTS,
-    ...(learned && typeof learned === "object" ? learned : {}),
+    ...tuned,
     feedback: WEIGHTS.feedback,
+    image: WEIGHTS.image,
   };
 }
 

@@ -2,14 +2,15 @@
 // We already have a hand-written mix (the prior). Marks in the log are labels.
 // This file fits a linear model: P(keep) from the score parts we stored.
 // After a fit we also hide some marks as a quiz — train vs test.
+// Each job fits its own logistic. Marks for other jobs are not examples.
 
 import { MIX_KEYS, WEIGHTS } from "./ranker.js";
 
 // Start from the v0 mix. vibe / text are 0 until the data asks for them.
 export const PRIOR = Object.fromEntries(MIX_KEYS.map((key) => [key, WEIGHTS[key]]));
 
-const MIN_KEEP = 2;
-const MIN_NAH = 2;
+export const MIN_KEEP = 2;
+export const MIN_NAH = 2;
 export const MIN_HOLDOUT = 2;
 
 function sigmoid(z) {
@@ -139,6 +140,53 @@ export function fitExamples(
 
 export function fit(log, opts) {
   return fitExamples(examplesFromLog(log), opts);
+}
+
+// Keep / nah for this job only. A mark on another job is not an example.
+export function eventsForJob(log, jobId) {
+  if (typeof jobId !== "string" || !jobId || !Array.isArray(log)) return [];
+  return log.filter((event) => event && event.job === jobId);
+}
+
+// Cold until this job has enough of its own keeps and nahs. The caller
+// then keeps the hand-written prior. Other jobs' marks do not count.
+export function learnForJob(log, jobId, opts) {
+  const scoped = eventsForJob(log, jobId);
+  const check = inspectLog(scoped);
+  if (!check.ok) {
+    return {
+      ok: false,
+      jobId: typeof jobId === "string" ? jobId : null,
+      keeps: check.keeps,
+      nahs: check.nahs,
+      reason:
+        "Need a couple of keep and nah marks on this job first — both kinds, so the model can tell them apart.",
+      weights: null,
+      report: null,
+    };
+  }
+  const { weights, report } = learnAndEvaluate(scoped, opts);
+  return {
+    ok: true,
+    jobId,
+    keeps: check.keeps,
+    nahs: check.nahs,
+    reason: "",
+    weights,
+    report,
+  };
+}
+
+// Short line for the why panel. source is "job", "fallback", or "prior".
+export function jobLearnCopy(label, source) {
+  const name = String(label || "This job").trim() || "This job";
+  if (source === "job") {
+    return `${name} only. Default on the left, learned on the right.`;
+  }
+  if (source === "fallback") {
+    return `${name} is still on your earlier shared mix. Learning here changes only this job.`;
+  }
+  return `${name} uses the hand-written mix until this job has a few keeps and nahs of its own.`;
 }
 
 // Fit only on the train split when the holdout is big enough and still

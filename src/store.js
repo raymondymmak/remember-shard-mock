@@ -1,4 +1,5 @@
 import { placeMark, undoActiveKeep, undoActiveNah } from "./marks.js";
+import { MIX_KEYS } from "./ranker.js";
 
 const KEY = "remember.feedback.v0";
 const WEIGHTS_KEY = "remember.weights.v0";
@@ -159,29 +160,14 @@ function readWeightsRecord() {
     const raw = localStorage.getItem(WEIGHTS_KEY);
     if (!raw) return null;
     const data = JSON.parse(raw);
-    if (!data || typeof data !== "object") return null;
+    if (!data || typeof data !== "object" || Array.isArray(data)) return null;
     return data;
   } catch {
     return null;
   }
 }
 
-export function loadWeights() {
-  const data = readWeightsRecord();
-  if (!data) return null;
-  if (data.mix && typeof data.mix === "object") return data.mix;
-  if ("job" in data) return data;
-  return null;
-}
-
-export function loadEval() {
-  const data = readWeightsRecord();
-  return data && data.eval && typeof data.eval === "object" ? data.eval : null;
-}
-
-export function saveWeights(weights, evalReport = null) {
-  const mix = weights?.mix && typeof weights.mix === "object" ? weights.mix : weights;
-  const payload = { v: 2, mix, eval: evalReport };
+function writeWeightsRecord(payload) {
   if (!canUseStorage()) {
     globalThis.__rememberWeights = payload;
     return payload;
@@ -192,6 +178,135 @@ export function saveWeights(weights, evalReport = null) {
     // ignore quota / private mode
   }
   return payload;
+}
+
+// A learned mix is only the trained parts. Feedback and image stay fixed.
+function weightVector(obj) {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
+  if (!Number.isFinite(Number(obj.job))) return null;
+  const mix = {};
+  for (const key of MIX_KEYS) {
+    const n = Number(obj[key]);
+    if (Number.isFinite(n)) mix[key] = n;
+  }
+  return Object.keys(mix).length ? mix : null;
+}
+
+function blankModel() {
+  return { v: 3, jobs: {}, fallback: null, fallbackEval: null, prior: {} };
+}
+
+function isPerJobModel(data) {
+  return Boolean(
+    data &&
+      data.v === 3 &&
+      data.jobs &&
+      typeof data.jobs === "object" &&
+      !Array.isArray(data.jobs),
+  );
+}
+
+function evalOrNull(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
+function normalizeModel(data) {
+  const model = blankModel();
+  const rawJobs = data.jobs && typeof data.jobs === "object" ? data.jobs : {};
+  for (const [id, entry] of Object.entries(rawJobs)) {
+    if (typeof id !== "string" || !id) continue;
+    const mix = weightVector(entry?.mix ?? entry);
+    if (!mix) continue;
+    model.jobs[id] = { mix, eval: evalOrNull(entry?.eval) };
+  }
+  const rawPrior = data.prior;
+  if (rawPrior && typeof rawPrior === "object" && !Array.isArray(rawPrior)) {
+    for (const [id, flag] of Object.entries(rawPrior)) {
+      if (typeof id === "string" && id && flag) model.prior[id] = true;
+    }
+  }
+  model.fallback = weightVector(data.fallback);
+  model.fallbackEval = evalOrNull(data.fallbackEval);
+  return model;
+}
+
+// Old saves were one flat mix: either { job, freshness, ... } or
+// { v: 2, mix, eval }. Keep that mix as a shared fallback so a reload
+// still ranks with it. Jobs learn their own mixes on top.
+function migrateFlat(data) {
+  const wrapped = weightVector(data.mix);
+  const flat = wrapped || weightVector(data);
+  if (!flat) return null;
+  const model = blankModel();
+  model.fallback = flat;
+  model.fallbackEval = wrapped ? evalOrNull(data.eval) : null;
+  return model;
+}
+
+// Read the per-job record. A flat v0 / v2 mix is rewritten once.
+function readModel() {
+  const data = readWeightsRecord();
+  if (!data) return blankModel();
+  if (isPerJobModel(data)) return normalizeModel(data);
+  const migrated = migrateFlat(data);
+  if (!migrated) return blankModel();
+  writeWeightsRecord(migrated);
+  return migrated;
+}
+
+function knownJob(jobId) {
+  return typeof jobId === "string" && jobId ? jobId : "";
+}
+
+// "job" — this job has its own mix.
+// "fallback" — still the older shared mix.
+// "prior" — hand-written weights (never learned, or reset).
+export function mixSource(jobId) {
+  const id = knownJob(jobId);
+  if (!id) return "prior";
+  const model = readModel();
+  if (model.jobs[id]) return "job";
+  if (model.prior[id]) return "prior";
+  if (model.fallback) return "fallback";
+  return "prior";
+}
+
+export function mixForJob(jobId) {
+  const id = knownJob(jobId);
+  if (!id) return null;
+  const model = readModel();
+  if (model.jobs[id]) return model.jobs[id].mix;
+  if (model.prior[id]) return null;
+  return model.fallback;
+}
+
+export function evalForJob(jobId) {
+  const id = knownJob(jobId);
+  if (!id) return null;
+  const model = readModel();
+  if (model.jobs[id]) return model.jobs[id].eval;
+  if (model.prior[id]) return null;
+  return model.fallbackEval;
+}
+
+export function saveJobMix(jobId, weights, evalReport = null) {
+  const id = knownJob(jobId);
+  const mix = weightVector(weights);
+  const model = readModel();
+  if (!id || !mix) return model;
+  model.jobs[id] = { mix, eval: evalOrNull(evalReport) };
+  delete model.prior[id];
+  return writeWeightsRecord(model);
+}
+
+// Clears this job only. An older shared mix stays for jobs not reset.
+export function clearJobMix(jobId) {
+  const id = knownJob(jobId);
+  const model = readModel();
+  if (!id) return model;
+  delete model.jobs[id];
+  model.prior[id] = true;
+  return writeWeightsRecord(model);
 }
 
 export function clearWeights() {

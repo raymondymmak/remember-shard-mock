@@ -7,6 +7,7 @@ import {
   MIX_KEYS,
   WEIGHTS,
   cosine,
+  mixWeights,
   embedText,
   feedbackScore,
   jobDocument,
@@ -24,6 +25,25 @@ const shards = prepareShards(SHARDS);
 function job(id) {
   return jobs.find((item) => item.id === id);
 }
+
+describe("learned mix", () => {
+  it("keeps feedback and the photo at the hand-written weights", () => {
+    const mixed = mixWeights({
+      job: 0.1,
+      vibe: 2,
+      feedback: 5,
+      image: 5,
+      extra: 1,
+    });
+    assert.equal(mixed.job, 0.1);
+    assert.equal(mixed.vibe, 2);
+    assert.equal(mixed.freshness, WEIGHTS.freshness);
+    assert.equal(mixed.feedback, WEIGHTS.feedback);
+    assert.equal(mixed.image, WEIGHTS.image);
+    assert.equal(mixed.extra, undefined);
+    assert.deepEqual(mixWeights(null), WEIGHTS);
+  });
+});
 
 describe("representations", () => {
   it("cosine is 1 for the same vector and ~0 for opposite vibes", () => {
