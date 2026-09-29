@@ -14,7 +14,7 @@ The camera roll gets longer. The useful bits stay buried. The bet is small: past
 
 - **Job, then a letter.** Three jobs: Need a push, Soft memory, Prep for people & names. Every shard in the pool is scored. The letter is whoever wins.
 - **Like and dislike.** Those marks are stored with the score from that moment, so the next ranking can move — including after a reload. One letter, one mark, for the job you are on. Tap the filled icon again and it clears. Leave it unmarked and turn the page: that is a pass. Prev and next do not write a mark, and they do not count the other letters as shown.
-- **Your files, on this machine.** Take a photo, choose one, pick files or a folder, or drop them on the page. A shared name binds a note to a photo (`hike.jpg` + `hike.md`). One photo and one note dropped together bind too. A photo alone gets a short placeholder you can revise. A note alone is a letter on warm paper. The first real shard sets the sample library aside.
+- **Your files, on this machine.** Take a photo, choose one, pick files or a folder, or drop them on the page. A shared name binds a note to a photo (`hike.jpg` + `hike.md`). One photo and one note dropped together bind too. A photo alone gets a short placeholder you can revise. A note alone is a letter on warm paper. The first real shard sets the sample library aside. Download your letters from the why box — the notes and the photographs, in one file — and drop that file, or the folder inside it, back on the page. They come back to this machine. Marks stay on their own download.
 - **Meaning in the browser.** Notes use a small sentence model (`all-MiniLM-L6-v2`). Photos use CLIP against the job’s words. The letter paints first. While the weights download — or if they never do — ranking uses hashed words and a brightness/warmth fingerprint read from the pixels. Vectors are cached on the device and reused until the note, the photo, or the model changes.
 - **Why this showed up.** The line under the note is composed here from the job and the note (a name, a verb, a short phrase), and from the picture once that read is ready. The glass box under the letter opens the same line, a few reasons, how it scored, the total, and the closest three.
 - **A mix you can teach, per job.** “Learn from this job” fits a small logistic model on the likes and dislikes for the job you are on. Ranking for that job uses that job’s weights. A job with fewer than two likes and two dislikes stays on the hand-written mix; marks on the other jobs do not count. “Reset this job’s mix” clears only the job you are on. An older shared mix still in this browser is kept as a fallback until that job learns its own, or you reset it. The newest marks on that job are hidden as a quiz. If there are not enough held-out marks, it says so. You can download the log as JSON.
@@ -31,7 +31,7 @@ One narrow column. Top to bottom on the page:
 4. **The pool, above the letter.** Prev, “1 of N”, next. “1 of N” opens every shard in ranked order. That order stays put while you browse, so the count does not reshuffle under you. Ends do not wrap. Arrow keys walk the same list.
 5. **The letter.** The photo, or warm paper when there is no photo. The note. “Why this, why now.” The date. Like and dislike.
 6. **Bring your own.** Take a photo, choose one, files, folder, and samples in / samples aside. One quiet plate.
-7. **Why this showed up.** One glass box. Learn this job, reset this job’s mix, download, and (for a letter of yours) let this one go, live inside it.
+7. **Why this showed up.** One glass box. Learn this job, reset this job’s mix, download the marks, download your letters, and (for a letter of yours) let this one go, live inside it.
 
 `index.html` is the shell. `src/main.js` boots the page and paints it. `src/style.css` is the room, the type, and the glass.
 
@@ -46,6 +46,7 @@ One narrow column. Top to bottom on the page:
 | `src/embed-cache.js` | Saved vectors |
 | `src/ingest.js`, `src/collect.js` | Turning a drop or a file picker into shards |
 | `src/library.js` | Your letters, and whether samples are in the pool |
+| `src/pack.js` | A zip of your letters — words and photographs — to drop back later |
 | `src/marks.js`, `src/store.js` | Like / dislike, the learned mix, last-shown times |
 | `src/browse.js` | “1 of N”, prev, next |
 | `src/train.js` | The logistic fit and the holdout |
@@ -57,7 +58,7 @@ Last-shown times live in `remember.shown.v0`. A reload still knows what was retr
 
 ## Run it
 
-Vite and vanilla JS. No framework. The only runtime dependency is `@xenova/transformers`. A push to `main` runs the tests, builds, and publishes the live page with GitHub Actions.
+Vite and vanilla JS. No framework. Runtime dependencies are `@xenova/transformers` and `fflate` (a letter pack is a small zip). A push to `main` runs the tests, builds, and publishes the live page with GitHub Actions.
 
 ```bash
 git clone https://github.com/raymondymmak/remember-shard-mock.git

@@ -16,6 +16,7 @@ import { embedCache, photoFingerprintOf, textFingerprint } from "./embed-cache.j
 import { explainEval, jobLearnCopy, learnForJob } from "./train.js";
 import * as store from "./store.js";
 import * as library from "./library.js";
+import { describeLetters, peelLetterPacks } from "./pack.js";
 import { entriesFromDataTransfer, entriesFromFileList } from "./collect.js";
 import {
   buildImportedShards,
@@ -988,6 +989,7 @@ function renderTeach() {
       <button type="button" class="teach-act lens-seg" data-train="learn">learn from this job</button>
       <button type="button" class="teach-act lens-seg" data-train="reset">reset this job’s mix</button>
       <button type="button" class="teach-act lens-seg" data-train="export">download the marks</button>
+      <button type="button" class="teach-act lens-seg" data-train="letters">download my letters</button>
       ${
         shard.imported
           ? `<button type="button" class="teach-act lens-seg" data-train="forget">let this one go</button>`
@@ -1236,49 +1238,84 @@ function showFresh(ids, summary) {
   swapTo(best.shard);
 }
 
+async function intakeFiles(entries) {
+  const grouped = pairFiles(entries.map(classifyEntry));
+  const noteEntries = [...grouped.pairs.map((pair) => pair.note), ...grouped.noteOnly];
+  const texts = new Map();
+  await Promise.all(
+    noteEntries.map(async (note) => {
+      if (!note.file || typeof note.file.text !== "function") {
+        texts.set(note.relativePath, "");
+        return;
+      }
+      try {
+        texts.set(note.relativePath, await note.file.text());
+      } catch {
+        texts.set(note.relativePath, "");
+      }
+    }),
+  );
+
+  const drafts = buildImportedShards(grouped, {
+    jobId: state.job,
+    textFor: (note) => texts.get(note.relativePath) || "",
+  });
+  const blobs = new Map();
+  for (const draft of drafts) {
+    if (draft.photoFile) blobs.set(draft.id, draft.photoFile);
+  }
+  const result = await library.rememberShards(drafts, blobs);
+  return { grouped, result };
+}
+
 async function intake(entries) {
   if (!booted || state.busy || !entries?.length) return false;
   state.busy = true;
   await finishEditing();
   setHint("Reading…");
   try {
-    const grouped = pairFiles(entries.map(classifyEntry));
-    const noteEntries = [...grouped.pairs.map((pair) => pair.note), ...grouped.noteOnly];
-    const texts = new Map();
-    await Promise.all(
-      noteEntries.map(async (note) => {
-        if (!note.file || typeof note.file.text !== "function") {
-          texts.set(note.relativePath, "");
-          return;
-        }
-        try {
-          texts.set(note.relativePath, await note.file.text());
-        } catch {
-          texts.set(note.relativePath, "");
-        }
-      }),
-    );
-
-    const drafts = buildImportedShards(grouped, {
-      jobId: state.job,
-      textFor: (note) => texts.get(note.relativePath) || "",
-    });
-    const blobs = new Map();
-    for (const draft of drafts) {
-      if (draft.photoFile) blobs.set(draft.id, draft.photoFile);
+    const peeled = await peelLetterPacks(entries);
+    const brought = { added: [], updated: [], duplicates: [] };
+    for (const restore of peeled.restores) {
+      if (!restore.shards?.length) continue;
+      const result = await library.bringLetters(restore.shards, restore.photos);
+      brought.added.push(...result.added);
+      brought.updated.push(...result.updated);
+      brought.duplicates.push(...result.duplicates);
     }
-    const result = await library.rememberShards(drafts, blobs);
+
+    let grouped = null;
+    let filed = { added: [], updated: [], duplicates: [] };
+    if (peeled.rest.length) {
+      const filedIntake = await intakeFiles(peeled.rest);
+      grouped = filedIntake.grouped;
+      filed = filedIntake.result;
+    }
+
     rebuildPool();
     if (meaning.status() === "ready") await vectorFlight;
-    const freshIds = new Set([...result.added, ...result.updated].map((shard) => shard.id));
+    const fresh = [...brought.added, ...brought.updated, ...filed.added, ...filed.updated];
+    const freshIds = new Set(fresh.map((shard) => shard.id));
     await attachImageFeel(pool.filter((shard) => freshIds.has(shard.id)));
     if (vision.status() === "ready") await visionFlight;
-    const summary = describeIntake(grouped, {
-      added: result.added.length,
-      updated: result.updated.length,
-      duplicate: result.duplicates.length,
+
+    const letterLine = describeLetters({
+      added: brought.added.length,
+      updated: brought.updated.length,
+      duplicate: brought.duplicates.length,
     });
-    showFresh(freshIds, summary);
+    const fileLine = grouped
+      ? describeIntake(grouped, {
+          added: filed.added.length,
+          updated: filed.updated.length,
+          duplicate: filed.duplicates.length,
+        })
+      : "";
+    const summary = [letterLine, fileLine].filter(Boolean).join(" ");
+    showFresh(
+      freshIds,
+      summary || (peeled.unreadable ? "Couldn’t read that pack." : "Nothing there to keep."),
+    );
     return true;
   } catch {
     setHint("Couldn’t keep those just now.");
@@ -1421,6 +1458,16 @@ teachEl.addEventListener("toggle", () => {
   if (teachEl.open) renderTeach();
 });
 
+async function onDownloadLetters() {
+  if (state.busy) return;
+  try {
+    await library.downloadLetters();
+  } catch {
+    state.trainNote = "Couldn’t pack those letters just now.";
+    renderTeach();
+  }
+}
+
 teachEl.addEventListener("click", (event) => {
   const button = event.target.closest("[data-train]");
   if (!button) return;
@@ -1429,6 +1476,7 @@ teachEl.addEventListener("click", (event) => {
   if (act === "learn") void onLearn();
   else if (act === "reset") void onResetMix();
   else if (act === "export") store.downloadLog();
+  else if (act === "letters") void onDownloadLetters();
   else if (act === "forget") void onForget();
 });
 
