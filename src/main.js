@@ -889,6 +889,7 @@ function poolLine() {
   return `<p class="teach-note">Imported letters join this pool — data, then retrieve, then rank.</p>
     <p class="teach-note">The line under the note is composed here from the job and the note — a name, a verb, a short phrase — and from the picture when that read is ready. No remote model writes it.</p>
     <p class="teach-note">Note and photo vectors stay on this device, next to the pictures. A changed note or a replaced photo is embedded again. Nothing is uploaded.</p>
+    <p class="teach-note">Download my letters takes the notes and the photographs. Marks, the mix, and what has already been shown come along when they are here.</p>
     ${vectorNote ? `<p class="teach-note">${escapeHtml(vectorNote)}</p>` : ""}`;
 }
 
@@ -989,7 +990,7 @@ function renderTeach() {
       <button type="button" class="teach-act lens-seg" data-train="learn">learn from this job</button>
       <button type="button" class="teach-act lens-seg" data-train="reset">reset this job’s mix</button>
       <button type="button" class="teach-act lens-seg" data-train="export">download the marks</button>
-      <button type="button" class="teach-act lens-seg" data-train="letters">download my letters</button>
+      <button type="button" class="teach-act lens-seg" title="Notes, photographs, and — when they are here — the marks and mix" data-train="letters">download my letters</button>
       ${
         shard.imported
           ? `<button type="button" class="teach-act lens-seg" data-train="forget">let this one go</button>`
@@ -1235,6 +1236,8 @@ function showFresh(ids, summary) {
     return;
   }
   setHint(summary);
+  // Shown times from a pack are already merged. Only this letter, the one
+  // that actually lands, is marked shown — not every letter that came back.
   swapTo(best.shard);
 }
 
@@ -1277,8 +1280,8 @@ async function intake(entries) {
     const peeled = await peelLetterPacks(entries);
     const brought = { added: [], updated: [], duplicates: [] };
     for (const restore of peeled.restores) {
-      if (!restore.shards?.length) continue;
-      const result = await library.bringLetters(restore.shards, restore.photos);
+      if (!restore.shards?.length && !restore.state) continue;
+      const result = await library.bringLetters(restore.shards, restore.photos, restore.state);
       brought.added.push(...result.added);
       brought.updated.push(...result.updated);
       brought.duplicates.push(...result.duplicates);

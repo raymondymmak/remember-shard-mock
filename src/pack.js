@@ -1,7 +1,8 @@
 // A letter pack is one zip you can take to another machine.
 // library.json holds the words. photos/ holds the prints.
 // Embeddings are made again on the next machine.
-// Marks, learned weights, and shown times keep their own stores.
+// Marks, the learned mix, and shown times may ride along as sidecars.
+// An older zip without them is still a letter pack.
 
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import {
@@ -10,9 +11,11 @@ import {
   directoryOf,
   extensionOf,
 } from "./ingest.js";
+import { fillWeightGaps, mergeMarkLogs, unionShownMaps } from "./store.js";
 
 export const LETTER_PACK_NAME = "remember-letters.zip";
 const KIND = "remember-letters";
+const STATE_FILES = ["marks.json", "weights.json", "shown.json"];
 
 // Same fields the library keeps for a letter. The pack adds `photo`
 // only as a path inside the zip, and only while the file is being built.
@@ -162,8 +165,15 @@ function ordered(shard, photo) {
   return out;
 }
 
+function writeJson(files, name, value) {
+  if (value == null) return;
+  files[name] = strToU8(`${JSON.stringify(value, null, 2)}\n`);
+}
+
 // Photographs are stored, not recompressed. JPEG and PNG already are.
-export async function buildPack(shards, photos) {
+// `state` is optional: { marks, weights, shown }. Missing pieces are left out,
+// so an older letter-only zip and a quiet machine still pack the same way.
+export async function buildPack(shards, photos, state = null) {
   const files = {};
   const used = new Set();
   const out = [];
@@ -182,16 +192,23 @@ export async function buildPack(shards, photos) {
   }
   const json = `${JSON.stringify({ v: 1, kind: KIND, shards: out }, null, 2)}\n`;
   files["library.json"] = strToU8(json);
+  writeJson(files, "marks.json", state?.marks);
+  writeJson(files, "weights.json", state?.weights);
+  writeJson(files, "shown.json", state?.shown);
   return zipSync(files, { level: 0 });
 }
 
-export function parseLibrary(raw) {
-  let data;
+function parseJson(raw) {
+  if (raw == null) return null;
   try {
-    data = JSON.parse(text(raw).replace(/^\uFEFF/, ""));
+    return JSON.parse(text(raw).replace(/^\uFEFF/, ""));
   } catch {
     return null;
   }
+}
+
+export function parseLibrary(raw) {
+  const data = parseJson(raw);
   if (!data || data.v !== 1 || data.kind !== KIND || !Array.isArray(data.shards)) return null;
   return { v: 1, kind: KIND, shards: data.shards };
 }
@@ -216,6 +233,73 @@ function fileMap(unzipped) {
     map.set(key, bytes);
   }
   return map;
+}
+
+function marksShape(data) {
+  if (!data || data.v !== 1 || !Array.isArray(data.log)) return null;
+  return { v: 1, log: data.log };
+}
+
+function weightsShape(data) {
+  if (!data || data.v !== 3 || !data.jobs || typeof data.jobs !== "object" || Array.isArray(data.jobs)) {
+    return null;
+  }
+  return data;
+}
+
+function shownShape(data) {
+  if (!data || data.v !== 1 || !data.shown || typeof data.shown !== "object" || Array.isArray(data.shown)) {
+    return null;
+  }
+  return { v: 1, shown: data.shown };
+}
+
+function packState(marks, weights, shown) {
+  if (!marks && !weights && !shown) return null;
+  return { marks: marks || null, weights: weights || null, shown: shown || null };
+}
+
+function combineState(current, extra) {
+  if (!extra) return current;
+  if (!current) return extra;
+  const marks =
+    current.marks || extra.marks
+      ? { v: 1, log: mergeMarkLogs(current.marks?.log || [], extra.marks?.log || []) }
+      : null;
+  // The first pack's full record stays. Later packs only fill job mixes it lacks.
+  const weights = current.weights ? fillWeightGaps(current.weights, extra.weights) : extra.weights || null;
+  const shown =
+    current.shown || extra.shown
+      ? { v: 1, shown: unionShownMaps(current.shown?.shown, extra.shown?.shown) }
+      : null;
+  return packState(marks, weights, shown);
+}
+
+function findSidecarBytes(map, root, name) {
+  const prefix = root ? `${normalize(root)}/` : "";
+  const direct = map.get(`${prefix}${name}`);
+  if (direct) return direct;
+  for (const [key, bytes] of map) {
+    if (!key.startsWith(prefix)) continue;
+    const rest = key.slice(prefix.length);
+    if (!rest || rest.includes("/")) continue;
+    if (rest.toLowerCase() === name) return bytes;
+  }
+  return null;
+}
+
+function sidecarJson(map, root, name, shape) {
+  const bytes = findSidecarBytes(map, root, name);
+  if (!bytes) return null;
+  return shape(parseJson(strFromU8(bytes)));
+}
+
+function readState(map, root) {
+  return packState(
+    sidecarJson(map, root, "marks.json", marksShape),
+    sidecarJson(map, root, "weights.json", weightsShape),
+    sidecarJson(map, root, "shown.json", shownShape),
+  );
 }
 
 function attachPhoto(shard, row, map, root, photos) {
@@ -250,19 +334,51 @@ export function readPack(bytes) {
     const doc = parseLibrary(strFromU8(map.get(key)));
     if (doc) found.push({ key, doc });
   }
-  if (!found.length) return { unreadable: true, shards: [], photos: new Map() };
+  if (!found.length) return { unreadable: true, shards: [], photos: new Map(), state: null };
 
   const shards = [];
   const photos = new Map();
+  let state = null;
   for (const { key, doc } of found) {
     const root = directoryOf(key);
+    state = combineState(state, readState(map, root));
     for (const row of doc.shards) {
       const shard = pickShard(row);
       if (!shard) continue;
       shards.push(attachPhoto(shard, row, map, root, photos));
     }
   }
-  return { unreadable: false, shards, photos };
+  return { unreadable: false, shards, photos, state };
+}
+
+function remapShown(record, renamed) {
+  const out = {};
+  for (const [id, ts] of Object.entries(record || {})) {
+    if (typeof ts !== "number" || !Number.isFinite(ts)) continue;
+    const key = typeof id === "string" && renamed.has(id) ? renamed.get(id) : id;
+    if (typeof key !== "string" || !key) continue;
+    if (out[key] == null || ts > out[key]) out[key] = ts;
+  }
+  return out;
+}
+
+// When a packed id cannot stay, marks and shown times follow the letter.
+// Job mixes are not keyed by shard, so they are left as they are.
+export function remapPackState(state, renamed) {
+  if (!state) return null;
+  if (!renamed || typeof renamed.get !== "function" || !renamed.size) return state;
+  const marks = state.marks
+    ? {
+        ...state.marks,
+        log: (state.marks.log || []).map((event) => {
+          if (!event || typeof event !== "object" || typeof event.shardId !== "string") return event;
+          if (!renamed.has(event.shardId)) return event;
+          return { ...event, shardId: renamed.get(event.shardId) };
+        }),
+      }
+    : state.marks;
+  const shown = state.shown ? { ...state.shown, shown: remapShown(state.shown.shown, renamed) } : state.shown;
+  return { ...state, marks, shown };
 }
 
 // Drafts for rememberShards. The id stays, so a marks file still points here.
@@ -284,6 +400,7 @@ export async function restoreDrafts(shards, photos, existing = [], { createId = 
 
   const drafts = [];
   const blobs = new Map();
+  const renamed = new Map();
   for (const source of shards || []) {
     const draft = pickShard(source);
     if (!draft) continue;
@@ -292,7 +409,11 @@ export async function restoreDrafts(shards, photos, existing = [], { createId = 
     if (!draft.fingerprint) continue;
 
     const prev = rows.find((row) => row.fingerprint && row.fingerprint === draft.fingerprint);
-    if (!prev && sourceId && ids.has(sourceId)) draft.id = createId();
+    if (prev?.id && sourceId && prev.id !== sourceId) renamed.set(sourceId, prev.id);
+    if (!prev && sourceId && ids.has(sourceId)) {
+      draft.id = createId();
+      if (draft.id && draft.id !== sourceId) renamed.set(sourceId, draft.id);
+    }
     if (!draft.id) draft.id = createId();
 
     const raw = await asBytes(photos?.get?.(sourceId) || photos?.get?.(draft.id) || null);
@@ -311,7 +432,7 @@ export async function restoreDrafts(shards, photos, existing = [], { createId = 
     });
     drafts.push(draft);
   }
-  return { drafts, blobs };
+  return { drafts, blobs, renamed };
 }
 
 function isZipEntry(entry) {
@@ -354,6 +475,37 @@ function findPhoto(entries, consumed, expected) {
     }
   }
   return looseCount === 1 ? loose : null;
+}
+
+function sidecarRest(rel, root, name) {
+  const prefix = root ? `${normalize(root)}/` : "";
+  if (!rel.startsWith(prefix)) return false;
+  const rest = rel.slice(prefix.length);
+  return Boolean(rest) && !rest.includes("/") && rest.toLowerCase() === name;
+}
+
+// Sidecars sit beside library.json. Take them out of the drop so a marks
+// file is not later called "not a photo."
+async function takeSidecarText(entries, consumed, root, name) {
+  for (const entry of entries) {
+    if (consumed.has(entry)) continue;
+    const rel = normalize(entry.relativePath || entry.name || "");
+    if (!sidecarRest(rel, root, name)) continue;
+    consumed.add(entry);
+    try {
+      return await readEntryText(entry);
+    } catch {
+      return "";
+    }
+  }
+  return null;
+}
+
+async function readFolderState(entries, consumed, root) {
+  const marks = marksShape(parseJson(await takeSidecarText(entries, consumed, root, "marks.json")));
+  const weights = weightsShape(parseJson(await takeSidecarText(entries, consumed, root, "weights.json")));
+  const shown = shownShape(parseJson(await takeSidecarText(entries, consumed, root, "shown.json")));
+  return packState(marks, weights, shown);
 }
 
 // A zip, or a folder that still has library.json beside photos/.
@@ -400,6 +552,7 @@ export async function peelLetterPacks(entries) {
         const rel = normalize(other.relativePath || other.name || "");
         if (rel.startsWith(photosDir)) consumed.add(other);
       }
+      await readFolderState(list, consumed, root);
       unreadable += 1;
       continue;
     }
@@ -420,7 +573,8 @@ export async function peelLetterPacks(entries) {
       }
     }
     consumed.add(entry);
-    restores.push({ unreadable: false, shards: doc.shards, photos });
+    const state = await readFolderState(list, consumed, root);
+    restores.push({ unreadable: false, shards: doc.shards, photos, state });
   }
 
   return {

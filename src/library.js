@@ -1,11 +1,20 @@
 // Imported letters live on this machine.
 // Words and the log sit in localStorage. Photographs sit in IndexedDB,
 // and embedding vectors sit in a store beside them.
-// A letter pack can carry the words and the photographs out.
+// A letter pack can carry the words, the photographs, and — when this
+// machine has them — the marks, the mix, and when each letter was shown.
 
 import { mergePlan } from "./ingest.js";
 import { samplesAsideAfterIntake } from "./own.js";
-import { LETTER_PACK_NAME, PACK_FIELDS, buildPack, restoreDrafts } from "./pack.js";
+import { LETTER_PACK_NAME, PACK_FIELDS, buildPack, remapPackState, restoreDrafts } from "./pack.js";
+import {
+  exportMarksPayload,
+  exportShownPayload,
+  exportWeightsPayload,
+  importMarksMerge,
+  importShownUnion,
+  importWeightsFillGaps,
+} from "./store.js";
 
 const META_KEY = "remember.library.v0";
 const DB_NAME = "remember";
@@ -267,7 +276,11 @@ export async function exportLetters() {
       // The words still go in the file.
     }
   }
-  return buildPack(shards, photos);
+  return buildPack(shards, photos, {
+    marks: exportMarksPayload(),
+    weights: exportWeightsPayload(),
+    shown: exportShownPayload(),
+  });
 }
 
 export async function downloadLetters() {
@@ -284,9 +297,16 @@ export async function downloadLetters() {
 }
 
 // Fingerprints dedupe, and a placeholder can grow a note.
-export async function bringLetters(shards, photos) {
-  const { drafts, blobs } = await restoreDrafts(shards, photos, records);
-  return rememberShards(drafts, blobs);
+// Ranking state, when the pack has it, is merged after the letters land
+// and before anything is marked shown again.
+export async function bringLetters(shards, photos, state = null) {
+  const restored = await restoreDrafts(shards, photos, records);
+  const result = await rememberShards(restored.drafts, restored.blobs);
+  const carried = remapPackState(state, restored.renamed);
+  if (carried?.marks) importMarksMerge(carried.marks);
+  if (carried?.weights) importWeightsFillGaps(carried.weights);
+  if (carried?.shown) importShownUnion(carried.shown);
+  return result;
 }
 
 export async function forget(id) {
