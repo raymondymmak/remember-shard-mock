@@ -13,7 +13,7 @@ import {
 import { CACHE_MODEL as NOTE_MODEL, meaning } from "./meaning.js";
 import { CACHE_MODEL as IMAGE_MODEL, vision } from "./vision.js";
 import { embedCache, photoFingerprintOf, textFingerprint } from "./embed-cache.js";
-import { explainEval, inspectLog, learnAndEvaluate } from "./train.js";
+import { explainEval, jobLearnCopy, learnForJob } from "./train.js";
 import * as store from "./store.js";
 import * as library from "./library.js";
 import { entriesFromDataTransfer, entriesFromFileList } from "./collect.js";
@@ -574,7 +574,7 @@ function syncPoolFace() {
 }
 
 function activeWeights() {
-  return store.loadWeights() || WEIGHTS;
+  return store.mixForJob(state.job) || WEIGHTS;
 }
 
 function rerank({ excludeIds = [], shown = store.shown() } = {}) {
@@ -913,7 +913,8 @@ function renderTeach() {
     .map((item) => byId.get(item.id))
     .filter(Boolean);
   const job = currentJob();
-  const learned = store.loadWeights();
+  const source = store.mixSource(job.id);
+  const learned = source === "prior" ? null : store.mixForJob(job.id);
   const reasons = plainReasons({
     job,
     jobScore: row.parts.job,
@@ -966,11 +967,11 @@ function renderTeach() {
           })
           .join("")}
       </ul>
+      <p class="teach-kicker">this job’s mix</p>
+      <p class="teach-lede teach-mix-lede">${escapeHtml(jobLearnCopy(job.label, source))}</p>
       ${
         learned
-          ? `<p class="teach-kicker">the mix</p>
-             <p class="teach-lede teach-mix-lede">Default on the left. Learned on the right.</p>
-             <ul class="teach-list teach-mix">
+          ? `<ul class="teach-list teach-mix">
                ${MIX_KEYS.map((key) => {
                  const now = Number(learned[key] ?? WEIGHTS[key]);
                  const moved = Math.abs(now - WEIGHTS[key]) >= 0.02;
@@ -979,13 +980,13 @@ function renderTeach() {
              </ul>`
           : ""
       }
-      ${evalMarkup(store.loadEval())}
+      ${source === "job" ? evalMarkup(store.evalForJob(job.id)) : ""}
       ${poolLine()}
     </div>
     ${state.trainNote ? `<p class="teach-note">${escapeHtml(state.trainNote)}</p>` : ""}
     <div class="teach-actions">
-      <button type="button" class="teach-act lens-seg" data-train="learn">learn from my marks</button>
-      <button type="button" class="teach-act lens-seg" data-train="reset">reset to default mix</button>
+      <button type="button" class="teach-act lens-seg" data-train="learn">learn from this job</button>
+      <button type="button" class="teach-act lens-seg" data-train="reset">reset this job’s mix</button>
       <button type="button" class="teach-act lens-seg" data-train="export">download the marks</button>
       ${
         shard.imported
@@ -1107,6 +1108,7 @@ async function chooseJob(jobId) {
     return;
   }
   state.job = jobId;
+  state.trainNote = "";
   state.usedIds = new Set();
   resetBrowse();
   const next = pickCandidate();
@@ -1344,15 +1346,16 @@ function evalMarkup(report) {
 
 async function onLearn() {
   await finishEditing();
-  const check = inspectLog(store.log());
-  if (!check.ok) {
-    state.trainNote = check.reason;
+  const job = currentJob();
+  if (!job) return;
+  const learned = learnForJob(store.log(), job.id);
+  if (!learned.ok) {
+    state.trainNote = learned.reason;
     renderTeach();
     return;
   }
-  const { weights, report } = learnAndEvaluate(store.log());
-  store.saveWeights(weights, report);
-  state.trainNote = `Learned from ${check.keeps} keep and ${check.nahs} nah.`;
+  store.saveJobMix(job.id, learned.weights, learned.report);
+  state.trainNote = `Learned ${job.label} from ${learned.keeps} keep and ${learned.nahs} nah.`;
   state.usedIds = new Set();
   resetBrowse();
   const next = pickCandidate();
@@ -1362,8 +1365,10 @@ async function onLearn() {
 
 async function onResetMix() {
   await finishEditing();
-  store.clearWeights();
-  state.trainNote = "Back to the hand-written mix.";
+  const job = currentJob();
+  if (!job) return;
+  store.clearJobMix(job.id);
+  state.trainNote = `${job.label} is back on the hand-written mix.`;
   state.usedIds = new Set();
   resetBrowse();
   const next = pickCandidate();
