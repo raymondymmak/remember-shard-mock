@@ -1,4 +1,4 @@
-import { placeMark, undoActiveKeep, undoActiveNah } from "./marks.js";
+import { canonicalMark, isMarkAction, placeMark, undoActiveKeep, undoActiveNah } from "./marks.js";
 import { MIX_KEYS } from "./ranker.js";
 
 const KEY = "remember.feedback.v0";
@@ -58,10 +58,11 @@ function save(log) {
 }
 
 export function recordFeedback({ shardId, job, action, scores, timestamp = Date.now() }) {
-  const event = { shardId, job, action, timestamp, scores };
+  const stored = canonicalMark(action);
+  const event = { shardId, job, action: stored, timestamp, scores };
   const log = load();
   // Like and dislike replace each other. A skip, if one is still recorded, stays an append.
-  const next = action === "keep" || action === "nah" ? placeMark(log, event) : [...log, event];
+  const next = isMarkAction(stored) ? placeMark(log, event) : [...log, event];
   return save(next);
 }
 
@@ -72,7 +73,7 @@ function undoTrailing(shardId, job, strip) {
   return save(next);
 }
 
-// Second tap on like. Clears that keep, and any dislike it replaced,
+// Second tap on like. Clears that like, and any dislike it replaced,
 // so the letter is unmarked. Other shards and jobs stay put.
 export function undoKeep(shardId, job) {
   return undoTrailing(shardId, job, undoActiveKeep);

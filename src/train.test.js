@@ -8,6 +8,7 @@ import {
   PRIOR,
   eventsForJob,
   examplesFromLog,
+  explainEval,
   fit,
   inspectLog,
   jobLearnCopy,
@@ -21,29 +22,37 @@ function event(action, scores) {
 }
 
 describe("supervised mix", () => {
-  it("ignores another so keep / nah stay clean labels", () => {
+  it("ignores another so like and dislike stay clean labels", () => {
+    const up = { job: 0.8, freshness: 1, recency: 0.2, vibe: 0.9, text: 0.4 };
+    const down = { job: 0.3, freshness: 1, recency: 0.9, vibe: 0.1, text: 0.2 };
     const log = [
       event("another", { job: 0.9, freshness: 1, recency: 0.2, vibe: 0.9, text: 0.4 }),
-      event("keep", { job: 0.8, freshness: 1, recency: 0.2, vibe: 0.9, text: 0.4 }),
-      event("nah", { job: 0.3, freshness: 1, recency: 0.9, vibe: 0.1, text: 0.2 }),
+      event("keep", up),
+      event("nah", down),
+      event("like", up),
+      event("dislike", down),
     ];
     const examples = examplesFromLog(log);
-    assert.equal(examples.length, 2);
+    assert.equal(examples.length, 4);
     assert.deepEqual(
       examples.map((row) => row.y),
-      [1, 0],
+      [1, 0, 1, 0],
     );
   });
 
-  it("needs both keep and nah before it will fit", () => {
-    const onlyKeep = inspectLog([
-      event("keep", { job: 0.8, freshness: 1, recency: 0.2, vibe: 0.9, text: 0.4 }),
+  it("needs both likes and dislikes before it will fit", () => {
+    const onlyLikes = inspectLog([
+      event("like", { job: 0.8, freshness: 1, recency: 0.2, vibe: 0.9, text: 0.4 }),
       event("keep", { job: 0.7, freshness: 1, recency: 0.2, vibe: 0.8, text: 0.3 }),
     ]);
-    assert.equal(onlyKeep.ok, false);
+    assert.equal(onlyLikes.ok, false);
+    assert.equal(onlyLikes.keeps, 2);
+    assert.equal(onlyLikes.nahs, 0);
+    assert.match(onlyLikes.reason, /likes and dislikes/);
+    assert.doesNotMatch(onlyLikes.reason, /\bkeep\b|\bnah\b/);
   });
 
-  it("after keep-on-high-vibe and nah-on-high-recency, vibe weight rises", () => {
+  it("after a like on high vibe and a dislike on high recency, vibe weight rises", () => {
     const log = [];
     for (let i = 0; i < 6; i += 1) {
       log.push(
@@ -116,6 +125,9 @@ describe("train vs holdout", () => {
     assert.equal(report.holdout, null);
     assert.equal(report.fittedOn, "all");
     assert.ok(report.train.n >= 4);
+    const lines = explainEval(report).join(" ");
+    assert.match(lines, /likes and dislikes/);
+    assert.doesNotMatch(lines, /\bkeep\b|\bnah\b/);
   });
 
   it("learned mix beats the prior on train, and fit ignores holdout labels", () => {
@@ -158,7 +170,7 @@ describe("train vs holdout", () => {
     assert.ok(weights.vibe > PRIOR.vibe);
     assert.ok(
       weights.vibe > leaked.vibe,
-      "holdout nahs-on-high-vibe must not be used in the fit",
+      "holdout dislikes on high vibe must not be used in the fit",
     );
     assert.ok(report.holdout.learned.accuracy < report.train.learned.accuracy);
   });
@@ -219,7 +231,7 @@ describe("per-job mix", () => {
     assert.notEqual(mixWeights(push.weights).vibe, mixWeights(soft.weights).vibe);
   });
 
-  it("stays on the prior until this job has two keeps and two nahs of its own", () => {
+  it("stays on the prior until this job has two likes and two dislikes of its own", () => {
     const log = [];
     for (let i = 0; i < 6; i += 1) {
       log.push(mark("soft", "keep", highVibe), mark("soft", "nah", highRecency));
@@ -237,6 +249,8 @@ describe("per-job mix", () => {
     assert.equal(push.keeps, 2);
     assert.equal(push.nahs, 1);
     assert.match(push.reason, /this job/);
+    assert.match(push.reason, /likes and dislikes/);
+    assert.doesNotMatch(push.reason, /\bkeep\b|\bnah\b/);
     assert.deepEqual(mixWeights(push.weights), WEIGHTS);
 
     const soft = learnForJob(log, "soft");
@@ -258,5 +272,7 @@ describe("per-job mix", () => {
     assert.match(jobLearnCopy("Soft memory", "fallback"), /only this job/);
     assert.match(jobLearnCopy("Prep for people & names", "prior"), /Prep for people & names/);
     assert.match(jobLearnCopy("Prep for people & names", "prior"), /hand-written mix/);
+    assert.match(jobLearnCopy("Prep for people & names", "prior"), /likes and dislikes/);
+    assert.doesNotMatch(jobLearnCopy("Prep for people & names", "prior"), /\bkeep\b|\bnah\b/);
   });
 });
