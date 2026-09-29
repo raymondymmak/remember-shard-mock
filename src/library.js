@@ -1,9 +1,11 @@
 // Imported letters live on this machine.
 // Words and the log sit in localStorage. Photographs sit in IndexedDB,
 // and embedding vectors sit in a store beside them.
+// A letter pack can carry the words and the photographs out.
 
 import { mergePlan } from "./ingest.js";
 import { samplesAsideAfterIntake } from "./own.js";
+import { LETTER_PACK_NAME, PACK_FIELDS, buildPack, restoreDrafts } from "./pack.js";
 
 const META_KEY = "remember.library.v0";
 const DB_NAME = "remember";
@@ -11,20 +13,8 @@ const DB_VERSION = 2;
 const STORE = "photos";
 export const EMBED_STORE = "embeddings";
 
-const KEPT = [
-  "id",
-  "note",
-  "why",
-  "date",
-  "vibe",
-  "photoAlt",
-  "hasPhoto",
-  "filename",
-  "noteName",
-  "fingerprint",
-  "placeholder",
-  "mime",
-];
+const KEPT = PACK_FIELDS;
+export { LETTER_PACK_NAME, PACK_FIELDS as LETTER_FIELDS };
 
 let records = [];
 let includeSamples = true;
@@ -262,6 +252,41 @@ export async function rememberShards(drafts, blobs) {
     updated: updated.map(materialize),
     duplicates: duplicates.map((row) => materialize(row)),
   };
+}
+
+// Words and photograph bytes. Embeddings stay in their store.
+export async function exportLetters() {
+  const shards = records.map(persistable).filter((row) => row.id);
+  const photos = new Map();
+  for (const row of shards) {
+    if (!row.hasPhoto) continue;
+    try {
+      const blob = await getBlob(row.id);
+      if (blob) photos.set(row.id, blob);
+    } catch {
+      // The words still go in the file.
+    }
+  }
+  return buildPack(shards, photos);
+}
+
+export async function downloadLetters() {
+  const bytes = await exportLetters();
+  const blob = new Blob([bytes], { type: "application/zip" });
+  const href = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = LETTER_PACK_NAME;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(href), 1000);
+}
+
+// Fingerprints dedupe, and a placeholder can grow a note.
+export async function bringLetters(shards, photos) {
+  const { drafts, blobs } = await restoreDrafts(shards, photos, records);
+  return rememberShards(drafts, blobs);
 }
 
 export async function forget(id) {
