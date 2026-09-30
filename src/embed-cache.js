@@ -210,6 +210,17 @@ export function createEmbedCache(storage = browserEmbedStore()) {
     await storage.delete(embedKey("image", id));
   }
 
+  // The note changed. The photograph's vector is still the same picture.
+  async function forgetNote(id) {
+    if (id == null || id === "") return false;
+    try {
+      await storage.delete(embedKey("note", id));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // Hits return the stored vector and do not call embedMisses.
   // embedMisses receives only the misses. ok:false means the model was not
   // usable — nothing is written, and the caller keeps its hash or fingerprint.
@@ -255,7 +266,7 @@ export function createEmbedCache(storage = browserEmbedStore()) {
     return { vectors, encoded, hits, failed: false };
   }
 
-  return { recall, remember, forget, resolve };
+  return { recall, remember, forget, forgetNote, resolve };
 }
 
 export const embedCache = createEmbedCache();
