@@ -331,4 +331,141 @@ describe("device storage", { concurrency: 1 }, () => {
     assert.notDeepEqual(store.mixForJob("push"), softMix);
     assert.equal(store.mixForJob("people"), null);
   });
+
+  it("merges marks without duplicating or letting an older one cover a newer local mark", async () => {
+    resetStorage();
+    const store = await newStore();
+    store.recordFeedback({
+      shardId: "import-1",
+      job: "push",
+      action: "like",
+      scores: { job: 0.4 },
+      timestamp: 50,
+    });
+    const before = localStorage.getItem(FEEDBACK_KEY);
+
+    store.importMarksMerge({
+      v: 1,
+      log: [
+        { shardId: "import-1", job: "push", action: "keep", timestamp: 50, scores: { job: 0.4 } },
+        { shardId: "import-1", job: "push", action: "dislike", timestamp: 40, scores: { job: 0.2 } },
+        { shardId: "import-2", job: "soft", action: "like", timestamp: 80, scores: { job: 0.3 } },
+        { shardId: "nope", job: "push", action: "like" },
+      ],
+    });
+
+    assert.notEqual(localStorage.getItem(FEEDBACK_KEY), before);
+    const log = store.log();
+    assert.equal(log.filter((event) => event.shardId === "import-1" && event.timestamp === 50).length, 1);
+    const face = [...log].reverse().find((event) => event.shardId === "import-1" && event.job === "push");
+    assert.equal(face.action, "like");
+    assert.equal(face.timestamp, 50);
+    assert.equal(log.some((event) => event.shardId === "import-2" && event.action === "like"), true);
+    assert.equal(log.some((event) => event.shardId === "nope"), false);
+
+    const settled = localStorage.getItem(FEEDBACK_KEY);
+    store.importMarksMerge({
+      v: 1,
+      log: [
+        { shardId: "import-1", job: "push", action: "like", timestamp: 50, scores: { job: 0.4 } },
+        { shardId: "import-2", job: "soft", action: "like", timestamp: 80, scores: { job: 0.3 } },
+      ],
+    });
+    assert.equal(localStorage.getItem(FEEDBACK_KEY), settled);
+    assert.equal(store.log().length, log.length);
+    assert.equal(store.exportMarksPayload().v, 1);
+    assert.equal(store.exportMarksPayload().log.length, log.length);
+  });
+
+  it("fills job mixes that are still missing and leaves a learned job alone", async () => {
+    resetStorage();
+    const store = await newStore();
+    assert.equal(store.exportWeightsPayload(), null);
+
+    const localMix = { job: 0.9, freshness: 0.1, recency: 0.1, vibe: 0.1, text: 0.1 };
+    const packMix = { job: 0.1, freshness: 0.9, recency: 0.1, vibe: 0.4, text: 0.2, image: 4 };
+    const softMix = { job: 0.3, freshness: 0.3, recency: 0.3, vibe: 0.8, text: 0.1 };
+    const fallback = { job: 0.55, freshness: 0.14, recency: 0.08, vibe: 0, text: 0 };
+    store.saveJobMix("push", localMix, { fittedOn: "train", at: 1 });
+    store.clearJobMix("people");
+    const saved = JSON.parse(localStorage.getItem(WEIGHTS_KEY));
+    saved.fallback = fallback;
+    localStorage.setItem(WEIGHTS_KEY, JSON.stringify(saved));
+
+    const untouched = localStorage.getItem(WEIGHTS_KEY);
+    store.importWeightsFillGaps({
+      v: 3,
+      jobs: {
+        push: { mix: packMix, eval: { fittedOn: "all", at: 9999 } },
+      },
+      fallback: { job: 0.1, freshness: 0.1, recency: 0.1, vibe: 0.1, text: 0.1 },
+      prior: { people: false, guests: true },
+    });
+    assert.equal(localStorage.getItem(WEIGHTS_KEY), untouched);
+    assert.deepEqual(store.mixForJob("push"), localMix);
+    assert.equal(store.evalForJob("push").at, 1);
+
+    store.importWeightsFillGaps({
+      v: 2,
+      jobs: { soft: { mix: softMix } },
+    });
+    assert.equal(store.mixSource("soft"), "fallback");
+    assert.deepEqual(store.mixForJob("soft"), fallback);
+
+    store.importWeightsFillGaps({
+      v: 3,
+      jobs: {
+        push: { mix: packMix, eval: { fittedOn: "all", at: 9999 } },
+        soft: { mix: softMix, eval: { fittedOn: "all", at: 3 } },
+      },
+      fallback: { job: 0.2, freshness: 0.2, recency: 0.2, vibe: 0.2, text: 0.2 },
+      fallbackEval: { fittedOn: "all" },
+      prior: { guests: true },
+    });
+
+    assert.deepEqual(store.mixForJob("push"), localMix);
+    assert.equal(store.mixSource("push"), "job");
+    assert.equal(store.mixSource("soft"), "job");
+    assert.deepEqual(store.mixForJob("soft"), softMix);
+    assert.equal(store.mixForJob("soft").image, undefined);
+    assert.deepEqual(store.evalForJob("soft"), { fittedOn: "all", at: 3 });
+    assert.equal(store.mixSource("people"), "prior");
+    assert.equal(store.mixForJob("people"), null);
+    assert.deepEqual(store.mixForJob("guests"), fallback);
+    assert.equal(store.mixSource("guests"), "fallback");
+
+    const persisted = JSON.parse(localStorage.getItem(WEIGHTS_KEY));
+    assert.equal(persisted.prior.people, true);
+    assert.equal(persisted.prior.guests, undefined);
+    assert.deepEqual(persisted.fallback, fallback);
+    assert.equal(store.exportWeightsPayload().v, 3);
+  });
+
+  it("unions shown times by the later stamp and does not mark them as just shown", async () => {
+    resetStorage();
+    const store = await newStore();
+    assert.equal(store.exportShownPayload(), null);
+
+    const raw = JSON.stringify({ v: 1, shown: { "import-1": 500, "import-2": 100 } });
+    memory.set(SHOWN_KEY, raw);
+    store.loadShown();
+    const same = store.importShownUnion({ v: 1, shown: { "import-1": 500 } });
+    assert.equal(localStorage.getItem(SHOWN_KEY), raw);
+    assert.equal(same["import-1"], 500);
+
+    const now = Date.now();
+    store.importShownUnion({
+      v: 1,
+      shown: { "import-1": 200, "import-2": 800, "import-9": 10, bad: "no", "": 4 },
+    });
+    assert.equal(store.shown()["import-1"], 500);
+    assert.equal(store.shown()["import-2"], 800);
+    assert.equal(store.shown()["import-9"], 10);
+    assert.equal(store.shown().bad, undefined);
+    assert.ok(store.shown()["import-1"] < now);
+    assert.equal(store.exportShownPayload().shown["import-2"], 800);
+
+    store.importShownUnion({ v: 2, shown: { "import-1": 99999 } });
+    assert.equal(store.shown()["import-1"], 500);
+  });
 });

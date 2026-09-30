@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { draftNote } from "./ingest.js";
+import { isKept } from "./marks.js";
 import { SHARDS } from "./shards.js";
 import {
   LETTER_PACK_NAME,
@@ -94,6 +95,7 @@ function installFakeIndexedDB() {
 
 const fake = installFakeIndexedDB();
 const library = await import("./library.js");
+const store = await import("./store.js");
 
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd0, 4, 5, 6, 0xff, 0xd9]);
 
@@ -178,8 +180,12 @@ function assertMarks(snapshot) {
 async function emptyLibrary() {
   for (const row of [...library.list()]) await library.forget(row.id);
   memory.clear();
+  delete globalThis.__rememberShown;
+  delete globalThis.__rememberWeights;
+  delete globalThis.__rememberFeedback;
   fake.store("remember", "photos")?.clear();
   fake.store("remember", "embeddings")?.clear();
+  store.loadShown();
   await library.hydrate();
 }
 
@@ -242,6 +248,7 @@ describe("letter pack", { concurrency: 1 }, () => {
     const deflated = readPack(zipSync(files, { level: 9 }));
     assert.equal(deflated.shards[0].note, letter().note);
     assert.equal(deflated.shards[0].fingerprint, letter().fingerprint);
+    assert.equal(deflated.state, null);
     assert.deepEqual(deflated.photos.get("import-1"), jpeg);
 
     const nested = {};
@@ -569,11 +576,272 @@ describe("letter pack", { concurrency: 1 }, () => {
     assert.equal(library.list()[0].note, letter().note);
   });
 
+  it("round-trips marks, the mix, and shown times in the same zip", async () => {
+    await emptyLibrary();
+    await library.bringLetters([letter(), paper()], new Map([["import-1", jpeg]]));
+    store.recordFeedback({
+      shardId: "import-1",
+      job: "push",
+      action: "like",
+      scores: { job: 0.4, freshness: 0.2, recency: 0.1, vibe: 0.3, text: 0.1 },
+      timestamp: 100,
+    });
+    store.recordFeedback({
+      shardId: "import-2",
+      job: "push",
+      action: "dislike",
+      scores: { job: 0.1, freshness: 0.2, recency: 0.2, vibe: 0.1, text: 0.2 },
+      timestamp: 200,
+    });
+    const mix = { job: 0.22, freshness: 0.4, recency: 0.15, vibe: 0.7, text: 0.25 };
+    const report = { fittedOn: "all", at: 900 };
+    store.saveJobMix("push", mix, report);
+    store.markShown("import-1", 1_700_000_000_000);
+    store.markShown("import-2", 1_700_000_100_000);
+
+    const bytes = await library.exportLetters();
+    const unzipped = unzipSync(bytes);
+    assert.deepEqual(Object.keys(unzipped).sort(), [
+      "library.json",
+      "marks.json",
+      "photos/import-1.jpg",
+      "shown.json",
+      "weights.json",
+    ]);
+    const packed = ["library.json", "marks.json", "weights.json", "shown.json"]
+      .map((name) => strFromU8(unzipped[name]))
+      .join("\n");
+    assert.equal(packed.includes("embedding"), false);
+    assert.equal(packed.includes("imageVec"), false);
+    assert.equal(JSON.parse(strFromU8(unzipped["library.json"])).v, 1);
+
+    const pack = readPack(bytes);
+    assert.equal(pack.state.marks.log.length, 2);
+    assert.equal(pack.state.weights.v, 3);
+    assert.equal(pack.state.weights.jobs.push.mix.vibe, 0.7);
+    assert.equal(pack.state.shown.shown["import-2"], 1_700_000_100_000);
+
+    const nested = {};
+    for (const [name, data] of Object.entries(unzipped)) nested[`take-home/${name}`] = data;
+    const folder = await peelLetterPacks(
+      Object.entries(nested).map(([name, data]) => fileEntry(name, data)),
+    );
+    assert.equal(folder.rest.length, 0);
+    assert.equal(folder.restores[0].state.marks.log[0].shardId, "import-1");
+    assert.equal(folder.restores[0].state.shown.shown["import-1"], 1_700_000_000_000);
+
+    for (const row of [...library.list()]) await library.forget(row.id);
+    memory.clear();
+    store.loadShown();
+    library.setIncludeSamples(true);
+
+    const brought = await library.bringLetters(pack.shards, pack.photos, pack.state);
+    assert.equal(brought.added.length, 2);
+    assert.equal(isKept(store.log(), "import-1", "push"), true);
+    assert.equal(store.log().some((event) => event.shardId === "import-2" && event.action === "dislike"), true);
+    assert.equal(store.mixSource("push"), "job");
+    assert.equal(store.mixForJob("push").vibe, 0.7);
+    assert.deepEqual(store.evalForJob("push"), report);
+    assert.equal(store.shown()["import-1"], 1_700_000_000_000);
+    assert.equal(store.shown()["import-2"], 1_700_000_100_000);
+    assert.ok(store.shown()["import-1"] < Date.now() - 1000);
+  });
+
+  it("imports an older letter-only pack without touching marks, mix, or shown times", async () => {
+    await emptyLibrary();
+    const mix = { job: 0.5, freshness: 0.2, recency: 0.2, vibe: 0.2, text: 0.1 };
+    store.recordFeedback({
+      shardId: "import-1",
+      job: "push",
+      action: "like",
+      scores: { job: 1 },
+      timestamp: 5,
+    });
+    store.saveJobMix("push", mix, { fittedOn: "all" });
+    store.markShown("import-1", 42);
+    const marks = store.log();
+    const bytes = await buildPack([letter()], new Map([["import-1", jpeg]]));
+    assert.equal(Object.keys(unzipSync(bytes)).includes("marks.json"), false);
+    const pack = readPack(bytes);
+    assert.equal(pack.state, null);
+    await library.bringLetters(pack.shards, pack.photos, pack.state);
+    assert.deepEqual(store.log(), marks);
+    assert.deepEqual(store.mixForJob("push"), mix);
+    assert.deepEqual(store.shown(), { "import-1": 42 });
+    assert.equal(store.mixSource("push"), "job");
+  });
+
+  it("fills a missing mix, keeps a learned one, unions shown, and does not duplicate marks", async () => {
+    await emptyLibrary();
+    const localMix = { job: 0.9, freshness: 0.1, recency: 0.1, vibe: 0.1, text: 0.1 };
+    const packMix = { job: 0.1, freshness: 0.9, recency: 0.1, vibe: 0.4, text: 0.2 };
+    const softMix = { job: 0.3, freshness: 0.3, recency: 0.3, vibe: 0.8, text: 0.1 };
+    const fallback = { job: 0.55, freshness: 0.14, recency: 0.08, vibe: 0, text: 0 };
+    store.saveJobMix("push", localMix, { fittedOn: "train", at: 1 });
+    store.clearJobMix("people");
+    store.clearJobMix("soft");
+    const saved = JSON.parse(localStorage.getItem("remember.weights.v0"));
+    saved.fallback = fallback;
+    localStorage.setItem("remember.weights.v0", JSON.stringify(saved));
+    store.recordFeedback({
+      shardId: "import-1",
+      job: "push",
+      action: "like",
+      scores: { job: 0.2 },
+      timestamp: 50,
+    });
+    store.markShown("import-1", 500);
+    store.markShown("import-2", 100);
+
+    const state = {
+      marks: {
+        v: 1,
+        log: [
+          { shardId: "import-1", job: "push", action: "like", timestamp: 50, scores: { job: 0.2 } },
+          { shardId: "import-1", job: "push", action: "dislike", timestamp: 40, scores: { job: 0.2 } },
+          { shardId: "import-2", job: "soft", action: "like", timestamp: 80, scores: { job: 0.3 } },
+          { shardId: "import-1", job: "push", action: "keep", timestamp: 50 },
+        ],
+      },
+      weights: {
+        v: 3,
+        jobs: {
+          push: { mix: packMix, eval: { fittedOn: "all", at: 9999 } },
+          soft: { mix: softMix, eval: { fittedOn: "all", at: 3 } },
+        },
+        fallback: { job: 0.4, freshness: 0.4, recency: 0.4, vibe: 0.4, text: 0.4 },
+        fallbackEval: { fittedOn: "all" },
+        prior: { people: true, guests: true },
+      },
+      shown: { v: 1, shown: { "import-1": 200, "import-2": 800, "import-9": 10, bad: "no" } },
+    };
+
+    await library.bringLetters([letter(), paper()], new Map([["import-1", jpeg]]), state);
+
+    assert.deepEqual(store.mixForJob("push"), localMix);
+    assert.equal(store.evalForJob("push").at, 1);
+    assert.equal(store.mixSource("soft"), "job");
+    assert.deepEqual(store.mixForJob("soft"), softMix);
+    assert.equal(store.mixSource("people"), "prior");
+    assert.equal(store.mixForJob("people"), null);
+    assert.deepEqual(store.mixForJob("guests"), fallback);
+    const persisted = JSON.parse(localStorage.getItem("remember.weights.v0"));
+    assert.equal(persisted.prior.people, true);
+    assert.equal(persisted.prior.soft, undefined);
+    assert.equal(persisted.prior.guests, undefined);
+    assert.deepEqual(persisted.fallback, fallback);
+
+    assert.equal(store.shown()["import-1"], 500);
+    assert.equal(store.shown()["import-2"], 800);
+    assert.equal(store.shown()["import-9"], 10);
+    assert.equal(store.shown().bad, undefined);
+
+    const log = store.log();
+    assert.equal(log.filter((event) => event.shardId === "import-1" && event.timestamp === 50).length, 1);
+    const face = [...log].reverse().find((event) => event.shardId === "import-1" && event.job === "push");
+    assert.equal(face.action, "like");
+    assert.equal(face.timestamp, 50);
+    assert.equal(log.some((event) => event.shardId === "import-2" && event.action === "like"), true);
+
+    const count = log.length;
+    await library.bringLetters([], new Map(), state);
+    assert.equal(store.log().length, count);
+    assert.equal(store.shown()["import-1"], 500);
+  });
+
+  it("points marks and shown times at the id the letter actually landed on", async () => {
+    await emptyLibrary();
+    await library.bringLetters([letter()], new Map([["import-1", jpeg]]));
+    store.recordFeedback({
+      shardId: "import-1",
+      job: "soft",
+      action: "dislike",
+      scores: { job: 0.2 },
+      timestamp: 3,
+    });
+
+    const otherBytes = new Uint8Array([7, 7, 7, 7]);
+    const other = letter({
+      fingerprint: "other.jpg|2|2",
+      filename: "other.jpg",
+      note: "Another day.",
+    });
+    const state = {
+      marks: {
+        v: 1,
+        log: [{ shardId: "import-1", job: "push", action: "like", timestamp: 10, scores: { job: 0.5 } }],
+      },
+      shown: { v: 1, shown: { "import-1": 10 } },
+    };
+    const moved = await library.bringLetters([other], new Map([["import-1", otherBytes]]), state);
+    const landed = moved.added[0].id;
+    assert.notEqual(landed, "import-1");
+    assert.equal(isKept(store.log(), landed, "push"), true);
+    assert.equal(store.log().some((event) => event.shardId === "import-1" && event.job === "push"), false);
+    assert.equal(store.log().find((event) => event.shardId === "import-1").action, "dislike");
+    assert.equal(store.shown()[landed], 10);
+    assert.equal(store.shown()["import-1"], undefined);
+
+    const again = letter({ id: "import-9" });
+    const followed = {
+      marks: {
+        v: 1,
+        log: [{ shardId: "import-9", job: "people", action: "like", timestamp: 7, scores: { job: 0.2 } }],
+      },
+      shown: { v: 1, shown: { "import-9": 77 } },
+    };
+    const duplicate = await library.bringLetters([again], new Map(), followed);
+    assert.equal(duplicate.added.length, 0);
+    assert.equal(duplicate.duplicates.length, 1);
+    assert.equal(isKept(store.log(), "import-1", "people"), true);
+    assert.equal(store.shown()["import-1"], 77);
+    assert.equal(store.shown()["import-9"], undefined);
+  });
+
+  it("still reads the letters when a sidecar is broken or from a later weights file", async () => {
+    const broken = zipSync(
+      {
+        "library.json": strToU8(
+          JSON.stringify({
+            v: 1,
+            kind: "remember-letters",
+            shards: [{ ...letter(), photo: "photos/import-1.jpg" }],
+          }),
+        ),
+        "marks.json": strToU8("{"),
+        "weights.json": strToU8(JSON.stringify({ v: 2, mix: { job: 1 } })),
+        "shown.json": strToU8(JSON.stringify({ v: 1, shown: [] })),
+        "photos/import-1.jpg": jpeg,
+      },
+      { level: 0 },
+    );
+    const pack = readPack(broken);
+    assert.equal(pack.unreadable, false);
+    assert.equal(pack.shards[0].note, letter().note);
+    assert.equal(pack.state, null);
+    assert.deepEqual(pack.photos.get("import-1"), jpeg);
+
+    const peeled = await peelLetterPacks([
+      fileEntry(
+        "backup/library.json",
+        JSON.stringify({ v: 2, kind: "remember-letters", shards: [] }),
+        "application/json",
+      ),
+      fileEntry("backup/marks.json", "{", "application/json"),
+      fileEntry("backup/note.txt", "hello"),
+    ]);
+    assert.equal(peeled.unreadable, 1);
+    assert.equal(peeled.rest.length, 1);
+    assert.equal(peeled.rest[0].name, "note.txt");
+  });
+
   it("offers download my letters beside the marks, and files can choose a zip", () => {
     const main = readFileSync(new URL("./main.js", import.meta.url), "utf8");
     const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
     const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
     assert.match(main, /data-train="letters">download my letters</);
+    assert.match(main, /Marks, the mix, and what has already been shown come along when they are here/);
+    assert.match(main, /restore\.state/);
     assert.match(main, /peelLetterPacks/);
     assert.match(main, /bringLetters/);
     assert.match(main, /downloadLetters/);

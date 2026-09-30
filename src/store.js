@@ -322,8 +322,173 @@ export function clearWeights() {
   }
 }
 
+function marksRecord() {
+  return { v: 1, log: load() };
+}
+
+function markEvent(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const shardId = typeof raw.shardId === "string" ? raw.shardId : "";
+  const job = typeof raw.job === "string" ? raw.job : "";
+  const action = typeof raw.action === "string" ? raw.action : "";
+  const timestamp = raw.timestamp;
+  if (!shardId || !job || !action || typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
+    return null;
+  }
+  const event = { shardId, job, action, timestamp };
+  if (raw.scores && typeof raw.scores === "object" && !Array.isArray(raw.scores)) event.scores = raw.scores;
+  return event;
+}
+
+function markKey(event) {
+  return `${event.shardId}\0${event.job}\0${canonicalMark(event.action)}\0${event.timestamp}`;
+}
+
+// Same event twice — including an older "keep" beside a "like" — counts once.
+export function mergeMarkLogs(local, incoming) {
+  const current = Array.isArray(local) ? local : [];
+  const seen = new Set();
+  for (const raw of current) {
+    const event = markEvent(raw);
+    if (event) seen.add(markKey(event));
+  }
+  const extra = [];
+  for (const raw of incoming || []) {
+    const event = markEvent(raw);
+    if (!event) continue;
+    const key = markKey(event);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    extra.push(event);
+  }
+  if (!extra.length) return current;
+
+  const tagged = [
+    ...current.map((event, index) => ({
+      event,
+      local: true,
+      index,
+      time: Number(event?.timestamp),
+    })),
+    ...extra.map((event, index) => ({
+      event,
+      local: false,
+      index,
+      time: event.timestamp,
+    })),
+  ];
+  tagged.sort((a, b) => {
+    const aTime = Number.isFinite(a.time) ? a.time : null;
+    const bTime = Number.isFinite(b.time) ? b.time : null;
+    if (aTime != null && bTime != null && aTime !== bTime) return aTime - bTime;
+    if (aTime != null && bTime == null) return -1;
+    if (aTime == null && bTime != null) return 1;
+    if (a.local !== b.local) return a.local ? 1 : -1;
+    return a.index - b.index;
+  });
+  return tagged.map((row) => row.event).slice(-LOG_CAP);
+}
+
+// The letter pack may carry this log. Same shape as the marks download.
+// Nothing to carry when the log is empty.
+export function exportMarksPayload() {
+  const record = marksRecord();
+  return record.log.length ? record : null;
+}
+
+// Append marks that are not already here. A newer local mark stays the one
+// on the letter. The log is not replaced.
+export function importMarksMerge(payload) {
+  if (!payload || payload.v !== 1 || !Array.isArray(payload.log)) return load();
+  const prev = load();
+  const next = mergeMarkLogs(prev, payload.log);
+  if (next === prev) return prev;
+  return save(next);
+}
+
+function weightsWorthCarrying(model) {
+  return Boolean(
+    Object.keys(model.jobs).length || model.fallback || Object.keys(model.prior).length,
+  );
+}
+
+// Full v3 record, when this machine has a learned mix, a shared fallback, or a reset.
+export function exportWeightsPayload() {
+  const model = readModel();
+  return weightsWorthCarrying(model) ? model : null;
+}
+
+// Copy job mixes the local record does not already have. Never replace
+// jobs[id]. Leave prior flags alone except the job just filled, which
+// should use the mix it just received. Fallback is not taken from the pack.
+export function fillWeightGaps(local, incoming) {
+  const model = normalizeModel(isPerJobModel(local) ? local : blankModel());
+  if (!isPerJobModel(incoming)) return model;
+  const extra = normalizeModel(incoming);
+  for (const [id, entry] of Object.entries(extra.jobs)) {
+    if (model.jobs[id]) continue;
+    model.jobs[id] = {
+      mix: entry.mix,
+      eval: entry.eval ? { ...entry.eval } : null,
+    };
+    delete model.prior[id];
+  }
+  return model;
+}
+
+export function importWeightsFillGaps(payload) {
+  if (!isPerJobModel(payload)) return readModel();
+  const local = readModel();
+  const next = fillWeightGaps(local, payload);
+  if (Object.keys(next.jobs).length === Object.keys(local.jobs).length) return local;
+  return writeWeightsRecord(next);
+}
+
+export function unionShownMaps(local, incoming) {
+  const out = {};
+  const take = (source) => {
+    if (!source || typeof source !== "object" || Array.isArray(source)) return;
+    for (const [id, ts] of Object.entries(source)) {
+      if (typeof id !== "string" || !id) continue;
+      if (typeof ts !== "number" || !Number.isFinite(ts)) continue;
+      const prev = out[id];
+      if (typeof prev !== "number" || ts > prev) out[id] = ts;
+    }
+  };
+  take(local);
+  take(incoming);
+  return out;
+}
+
+function sameShownEntries(a, b) {
+  if (a.length !== b.length) return false;
+  const map = new Map(a);
+  for (const [id, ts] of b) {
+    if (map.get(id) !== ts) return false;
+  }
+  return true;
+}
+
+// Shown times ride along so rotation does not start over.
+export function exportShownPayload() {
+  const record = shown();
+  return Object.keys(record).length ? { v: 1, shown: record } : null;
+}
+
+// Union by shard. The later time wins. This does not mark a letter as just shown.
+export function importShownUnion(payload) {
+  if (!payload || payload.v !== 1 || !payload.shown || typeof payload.shown !== "object" || Array.isArray(payload.shown)) {
+    return shown();
+  }
+  const prev = cappedShownEntries(Object.entries(shown()));
+  const next = cappedShownEntries(Object.entries(unionShownMaps(shown(), payload.shown)));
+  if (sameShownEntries(prev, next)) return shown();
+  rememberShown(next);
+  return saveShown();
+}
+
 export function downloadLog() {
-  const payload = JSON.stringify({ v: 1, log: load() }, null, 2);
+  const payload = JSON.stringify(marksRecord(), null, 2);
   const blob = new Blob([payload], { type: "application/json" });
   const href = URL.createObjectURL(blob);
   const link = document.createElement("a");
