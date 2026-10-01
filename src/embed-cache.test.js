@@ -161,6 +161,33 @@ describe("embed cache", () => {
     assert.equal(bytesFingerprint(new Uint8Array(0)), "");
   });
 
+  it("drops a revised note and leaves the photograph vector", async () => {
+    const cache = createEmbedCache(memoryStore());
+    const note = noteItem("I went anyway");
+    await cache.remember({ ...note, vector: [1, 0, 0] });
+    await cache.remember({
+      kind: "image",
+      id: note.id,
+      model: IMAGE_MODEL,
+      fingerprint: "abc:4",
+      dim: 2,
+      vector: [0, 1],
+    });
+    assert.equal(await cache.forgetNote(note.id), true);
+    assert.equal(await cache.recall(note), null);
+    assert.deepEqual(
+      await cache.recall({
+        kind: "image",
+        id: note.id,
+        model: IMAGE_MODEL,
+        fingerprint: "abc:4",
+        dim: 2,
+      }),
+      [0, 1],
+    );
+    assert.equal(await cache.forgetNote(""), false);
+  });
+
   it("drops a shard's note and photo vectors together", async () => {
     const cache = createEmbedCache(memoryStore());
     const note = noteItem("I went anyway");

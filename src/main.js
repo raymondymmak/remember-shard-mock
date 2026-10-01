@@ -23,13 +23,11 @@ import {
   captureEntries,
   classifyEntry,
   describeIntake,
-  draftNote,
-  noteBody,
   pairFiles,
   paperLine,
   paperWash,
-  vibeFromNote,
 } from "./ingest.js";
+import { canReviseNote, editorSeed, reviseOwnNote } from "./revise.js";
 import { composeWhy, plainReasons } from "./why.js";
 import { poolFace } from "./own.js";
 import { isKept, isNixed } from "./marks.js";
@@ -662,23 +660,27 @@ function printMarkup(shard) {
 }
 
 function noteMarkup(shard) {
-  if (state.editing && shard.imported) {
+  if (state.editing && canReviseNote(shard)) {
     return `
       <blockquote class="note">
-        <label class="sr-only" for="note-edit">Revise this note</label>
-        <textarea class="note-edit" id="note-edit" rows="5" autocomplete="off"></textarea>
+        <label class="sr-only" for="note-edit">The note</label>
+        <textarea class="note-edit" id="note-edit" rows="5" autocomplete="off" autocapitalize="sentences" enterkeyhint="done"></textarea>
         <button type="button" class="revise lens" data-act="done">done</button>
       </blockquote>
     `;
   }
 
-  const revise = shard.imported
-    ? `<button type="button" class="revise lens" data-act="revise">revise the note</button>`
-    : "";
+  if (canReviseNote(shard)) {
+    return `
+      <blockquote class="note">
+        <button type="button" class="note-text" data-act="revise">${escapeHtml(shard.note)}<span class="sr-only"> Edit this note.</span></button>
+      </blockquote>
+    `;
+  }
+
   return `
     <blockquote class="note">
       <p>${escapeHtml(shard.note)}</p>
-      ${revise}
     </blockquote>
   `;
 }
@@ -880,8 +882,15 @@ function shardMarkup(shard) {
 function focusEditor(shard) {
   const area = shardEl.querySelector("#note-edit");
   if (!area) return;
-  area.value = shard.note === draftNote() && shard.placeholder ? "" : shard.note;
-  area.placeholder = draftNote();
+  const seed = editorSeed(shard);
+  area.value = seed.value;
+  area.placeholder = seed.placeholder;
+  const end = area.value.length;
+  try {
+    area.setSelectionRange(end, end);
+  } catch {
+    // A range can be refused before the control is on screen.
+  }
   area.focus();
 }
 
@@ -1080,17 +1089,18 @@ function swapTo(shard, { rememberShown = true } = {}) {
 
 async function commitNote(text) {
   const shard = currentShard();
-  if (!shard?.imported) return false;
-  const written = noteBody(text);
-  const note = written || draftNote();
-  if (note === shard.note) return false;
-  library.updateShard(shard.id, {
-    note,
-    vibe: vibeFromNote(note),
-    placeholder: !written,
+  const revision = reviseOwnNote(shard, text);
+  if (!revision) return false;
+  library.updateShard(revision.id, {
+    note: revision.note,
+    vibe: revision.vibe,
+    placeholder: revision.placeholder,
   });
-  // A revised note needs a new vector. Wait only when meaning is already
-  // here — otherwise the hash stands in and the model fills it in later.
+  // Drop the old MiniLM vector before the refresh, so this shard cannot
+  // rank on the words it used to have. The photograph's vector stays.
+  // Wait only when meaning is already here — otherwise the hash stands in
+  // and the model fills the new words in later.
+  if (revision.wordsChanged) await embedCache.forgetNote(revision.id);
   if (meaning.status() === "ready") await scheduleVectors();
   else rebuildPool();
   return true;
@@ -1358,7 +1368,15 @@ shardEl.addEventListener("click", (event) => {
 
 shardEl.addEventListener("focusout", (event) => {
   if (event.target?.id !== "note-edit") return;
-  void commitNote(event.target.value);
+  const next = event.relatedTarget;
+  if (next && typeof next.closest === "function" && next.closest('[data-act="done"]')) return;
+  const area = event.target;
+  void (async () => {
+    await commitNote(area.value);
+    if (!state.editing) return;
+    state.editing = false;
+    renderShard();
+  })();
 });
 
 shardEl.addEventListener("keydown", (event) => {
